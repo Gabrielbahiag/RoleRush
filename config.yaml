@@ -1,0 +1,24 @@
+filtros:
+  palavras_chave: # bate no título + descrição
+    - python
+    - backend
+  excluir: # descarta se aparecer
+    - senior
+    - pleno/senior
+  senioridade:
+    - junior
+    - estagio
+  remoto: true # só remotas; ou false para qualquer
+
+fontes:
+  remotive:
+    ativo: true
+    categoria: software-dev
+  github_repo:
+    ativo: true
+    repos:
+      - backend-br/vagas
+      - frontend-pt/vagas
+
+notificacao:
+  telegram: true

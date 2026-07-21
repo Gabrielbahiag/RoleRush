@@ -1,0 +1,37 @@
+name: Monitor de vagas
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # a cada 6 horas
+  workflow_dispatch: {} # permite rodar manualmente pela aba Actions
+
+permissions:
+  contents: write # necessário para commitar o vagas.db atualizado
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Instalar dependências
+        run: uv sync --frozen
+
+      - name: Rodar monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python -m monitor.main
+
+      - name: Commitar banco de vagas vistas
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add vagas.db
+          git diff --cached --quiet || git commit -m "chore: atualiza banco de vagas vistas"
+          git push

@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+.venv/
+venv/
+
+.env
+
+*.db
+*.sqlite
+*.sqlite3
+# vagas.db é commitado de propósito: é a persistência de dedup entre runs do
+# GitHub Actions (runner é efêmero). Ver README/PROJECT_PLAN, Fase 4.
+!vagas.db
+
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+.vscode/
+.idea/
