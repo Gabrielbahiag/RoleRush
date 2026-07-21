@@ -27,6 +27,11 @@ fontes:
     repos:
       - backend-br/vagas
       - frontend-pt/vagas
+  adzuna:
+    ativo: true
+    pais: br
+    where: Brasília # a API tem localização de verdade; complementa o filtro acima
+    what: null # deixado em branco de propósito: o filtro de palavras-chave já filtra
 
 notificacao:
   telegram: true

@@ -13,7 +13,7 @@ só me interrompe quando aparece algo relevante e novo.
 ## Como funciona
 
 ```
-fontes (Remotive, issues do GitHub) -> filtros -> dedup (SQLite) -> Telegram
+fontes (Remotive, issues do GitHub, Adzuna) -> filtros -> dedup (SQLite) -> Telegram
 ```
 
 Cada fonte implementa a mesma interface (`Source.fetch() -> list[Vaga]`), então
@@ -25,12 +25,13 @@ src/monitor/
 ├── models.py        # dataclass Vaga
 ├── config.py         # carrega e valida config.yaml (pydantic)
 ├── storage.py         # SQLite: já vi essa vaga?
-├── filters.py          # palavras-chave / exclusão / remoto / senioridade
+├── filters.py          # palavras-chave / exclusão / remoto / senioridade / localização
 ├── notifier.py          # envia mensagem no Telegram
 ├── sources/
 │   ├── base.py            # interface Source
-│   ├── remotive.py          # API pública do Remotive
-│   └── github_repo.py         # issues de repos tipo backend-br/vagas
+│   ├── remotive.py          # API pública do Remotive (vagas remotas globais)
+│   ├── github_repo.py         # issues de repos tipo backend-br/vagas
+│   └── adzuna.py               # agregador com filtro real de localização (ex: Brasília)
 └── main.py                      # orquestra: coleta -> filtra -> dedup -> notifica
 ```
 
@@ -67,6 +68,8 @@ Segredos necessários (em *Settings → Secrets and variables → Actions*):
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
+- `ADZUNA_APP_ID`
+- `ADZUNA_APP_KEY`
 
 `GITHUB_TOKEN` **não precisa ser cadastrado** — é um nome reservado que o
 próprio GitHub Actions injeta automaticamente em toda execução, escopado
@@ -83,6 +86,12 @@ GitHub.
 3. Pegue o `chat_id` acessando
    `https://api.telegram.org/bot<TOKEN>/getUpdates` e lendo `message.chat.id`
    na resposta.
+
+## Credenciais do Adzuna
+
+Crie uma conta grátis em [developer.adzuna.com](https://developer.adzuna.com)
+e pegue o `Application ID` e a `Application Key` no seu dashboard — são duas
+chaves separadas (`ADZUNA_APP_ID` e `ADZUNA_APP_KEY`), não uma só.
 
 ## Roadmap
 

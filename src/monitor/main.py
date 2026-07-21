@@ -7,6 +7,7 @@ from monitor.config import Config, carregar_config
 from monitor.filters import aplicar_filtros
 from monitor.models import Vaga
 from monitor.notifier import TelegramNotifier
+from monitor.sources.adzuna import AdzunaSource
 from monitor.sources.base import Source
 from monitor.sources.github_repo import GithubRepoSource
 from monitor.sources.remotive import RemotiveSource
@@ -31,6 +32,15 @@ def montar_fontes(config: Config) -> list[Source]:
     if config.fontes.github_repo.ativo:
         for repo in config.fontes.github_repo.repos:
             fontes.append(GithubRepoSource(repo=repo))
+
+    if config.fontes.adzuna.ativo:
+        fontes.append(
+            AdzunaSource(
+                pais=config.fontes.adzuna.pais,
+                what=config.fontes.adzuna.what,
+                where=config.fontes.adzuna.where,
+            )
+        )
 
     return fontes
 

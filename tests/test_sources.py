@@ -1,6 +1,8 @@
+import pytest
 import respx
 from httpx import Response
 
+from monitor.sources.adzuna import AdzunaSource
 from monitor.sources.github_repo import GithubRepoSource
 from monitor.sources.remotive import RemotiveSource
 
@@ -67,3 +69,45 @@ def test_github_repo_source_ignora_pull_requests():
     assert len(vagas) == 1
     assert vagas[0].id == "github:backend-br/vagas:1"
     assert vagas[0].titulo == "[Acme] Backend Jr"
+
+
+@respx.mock
+def test_adzuna_source_mapeia_vagas():
+    respx.get("https://api.adzuna.com/v1/api/jobs/br/search/1").mock(
+        return_value=Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": "999",
+                        "title": "Desenvolvedor Python",
+                        "company": {"display_name": "Acme"},
+                        "location": {"display_name": "Brasília, DF"},
+                        "redirect_url": "https://adzuna.com.br/job/999",
+                        "created": "2026-07-01T00:00:00Z",
+                        "description": "vaga de backend em python",
+                    }
+                ]
+            },
+        )
+    )
+
+    vagas = AdzunaSource(
+        pais="br", where="Brasília", app_id="id-teste", app_key="key-teste"
+    ).fetch()
+
+    assert len(vagas) == 1
+    vaga = vagas[0]
+    assert vaga.id == "adzuna:999"
+    assert vaga.titulo == "Desenvolvedor Python"
+    assert vaga.empresa == "Acme"
+    assert vaga.localizacao == "Brasília, DF"
+    assert vaga.remoto is None
+
+
+def test_adzuna_source_sem_credenciais_da_erro_claro(monkeypatch):
+    monkeypatch.delenv("ADZUNA_APP_ID", raising=False)
+    monkeypatch.delenv("ADZUNA_APP_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="ADZUNA_APP_ID"):
+        AdzunaSource().fetch()

@@ -26,9 +26,17 @@ class GithubRepoConfig(BaseModel):
     repos: list[str] = Field(default_factory=list)
 
 
+class AdzunaConfig(BaseModel):
+    ativo: bool = False
+    pais: str = "br"
+    what: str | None = None
+    where: str | None = None
+
+
 class FontesConfig(BaseModel):
     remotive: RemotiveConfig = Field(default_factory=RemotiveConfig)
     github_repo: GithubRepoConfig = Field(default_factory=GithubRepoConfig)
+    adzuna: AdzunaConfig = Field(default_factory=AdzunaConfig)
 
 
 class NotificacaoConfig(BaseModel):
