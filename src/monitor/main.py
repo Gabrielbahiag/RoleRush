@@ -15,6 +15,12 @@ from monitor.storage import Storage
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("monitor")
 
+# httpx loga a URL completa de cada request em INFO, e a API do Telegram
+# embute o bot token na própria URL (/bot<TOKEN>/sendMessage) — sem isso,
+# o token vaza em qualquer log local ou do GitHub Actions.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 def montar_fontes(config: Config) -> list[Source]:
     fontes: list[Source] = []
