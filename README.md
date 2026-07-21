@@ -67,7 +67,13 @@ Segredos necessários (em *Settings → Secrets and variables → Actions*):
 
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
-- `GITHUB_TOKEN` — opcional, só aumenta o rate limit da API do GitHub
+
+`GITHUB_TOKEN` **não precisa ser cadastrado** — é um nome reservado que o
+próprio GitHub Actions injeta automaticamente em toda execução, escopado
+pelo bloco `permissions:` do workflow. Ele só existe como variável opcional
+no `.env` local (veja [`.env.example`](.env.example)) para quem quiser rodar
+o monitor fora do Actions e evitar o rate limit de 60 req/h da API pública do
+GitHub.
 
 ## Criando o bot do Telegram
 
