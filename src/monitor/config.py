@@ -11,6 +11,9 @@ class FiltrosConfig(BaseModel):
     excluir: list[str] = Field(default_factory=list)
     senioridade: list[str] = Field(default_factory=list)
     remoto: bool | None = None
+    # vagas remotas passam sempre; presenciais/híbridas só passam se baterem
+    # com um desses termos (ex: "brasília", "df"). Vazio = não filtra por local.
+    localizacao: list[str] = Field(default_factory=list)
 
 
 class RemotiveConfig(BaseModel):

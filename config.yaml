@@ -1,19 +1,27 @@
 filtros:
-  palavras_chave: # bate no título + descrição
+  palavras_chave: # bate no título + descrição; passa se achar QUALQUER um
     - python
-    - backend
-  excluir: # descarta se aparecer
-    - senior
-    - pleno/senior
-  senioridade:
-    - junior
-    - estagio
-  remoto: true # só remotas; ou false para qualquer
+    - machine learning
+    - inteligência artificial
+    - llm
+    - prompt engineering
+    - engenharia de prompt
+    - engenharia de software
+    - software engineer
+    - desenvolvedor
+  excluir: [] # descarta se aparecer (ex: "senior" caso volte a filtrar por nível)
+  senioridade: [] # vazio = qualquer nível (júnior, pleno, sênior)
+  remoto: null # não exige remoto: o filtro de localização já libera remotas
+  localizacao: # vaga remota passa sempre; presencial/híbrida só se bater aqui
+    - brasília
+    - brasilia
+    - df
+    - distrito federal
 
 fontes:
   remotive:
     ativo: true
-    categoria: software-dev
+    categoria: software-development
   github_repo:
     ativo: true
     repos:
