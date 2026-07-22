@@ -13,7 +13,7 @@ só me interrompe quando aparece algo relevante e novo.
 ## Como funciona
 
 ```
-fontes (Remotive, issues do GitHub, Adzuna) -> filtros -> dedup (SQLite) -> Telegram
+fontes (Remotive, RemoteOK, Arbeitnow, Himalayas, Adzuna, issues do GitHub) -> filtros -> dedup (SQLite) -> Telegram
 ```
 
 Cada fonte implementa a mesma interface (`Source.fetch() -> list[Vaga]`), então
@@ -30,9 +30,12 @@ src/monitor/
 ├── sources/
 │   ├── base.py            # interface Source
 │   ├── remotive.py          # API pública do Remotive (vagas remotas globais)
-│   ├── github_repo.py         # issues de repos tipo backend-br/vagas
-│   └── adzuna.py               # agregador com filtro real de localização (ex: Brasília)
-└── main.py                      # orquestra: coleta -> filtra -> dedup -> notifica
+│   ├── remoteok.py           # API pública do RemoteOK (vagas remotas globais)
+│   ├── arbeitnow.py           # API pública do Arbeitnow (cobertura forte Europa/DACH)
+│   ├── himalayas.py            # API com busca real por país + palavra-chave
+│   ├── github_repo.py           # issues de repos tipo backend-br/vagas
+│   └── adzuna.py                  # agregador com filtro real de localização (ex: Brasília)
+└── main.py                          # orquestra: coleta -> filtra -> dedup -> notifica
 ```
 
 ## Rodando localmente
@@ -70,6 +73,9 @@ Segredos necessários (em *Settings → Secrets and variables → Actions*):
 - `TELEGRAM_CHAT_ID`
 - `ADZUNA_APP_ID`
 - `ADZUNA_APP_KEY`
+
+Remotive, RemoteOK, Arbeitnow e Himalayas não pedem credencial nenhuma —
+plugue e use.
 
 `GITHUB_TOKEN` **não precisa ser cadastrado** — é um nome reservado que o
 próprio GitHub Actions injeta automaticamente em toda execução, escopado

@@ -8,8 +8,11 @@ from monitor.filters import aplicar_filtros
 from monitor.models import Vaga
 from monitor.notifier import TelegramNotifier
 from monitor.sources.adzuna import AdzunaSource
+from monitor.sources.arbeitnow import ArbeitnowSource
 from monitor.sources.base import Source
 from monitor.sources.github_repo import GithubRepoSource
+from monitor.sources.himalayas import HimalayasSource
+from monitor.sources.remoteok import RemoteOKSource
 from monitor.sources.remotive import RemotiveSource
 from monitor.storage import Storage
 
@@ -39,6 +42,20 @@ def montar_fontes(config: Config) -> list[Source]:
                 pais=config.fontes.adzuna.pais,
                 what=config.fontes.adzuna.what,
                 where=config.fontes.adzuna.where,
+            )
+        )
+
+    if config.fontes.remoteok.ativo:
+        fontes.append(RemoteOKSource())
+
+    if config.fontes.arbeitnow.ativo:
+        fontes.append(ArbeitnowSource())
+
+    if config.fontes.himalayas.ativo:
+        fontes.append(
+            HimalayasSource(
+                country=config.fontes.himalayas.country,
+                q=config.fontes.himalayas.q,
             )
         )
 

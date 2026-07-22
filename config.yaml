@@ -17,6 +17,8 @@ filtros:
     - brasilia
     - df
     - distrito federal
+    - Taguatinga
+    - Aguas Claras
 
 fontes:
   remotive:
@@ -27,11 +29,21 @@ fontes:
     repos:
       - backend-br/vagas
       - frontend-pt/vagas
+      - frontendbr/vagas
+      - datascience-br/vagas
   adzuna:
     ativo: true
     pais: br
     where: Brasília # a API tem localização de verdade; complementa o filtro acima
     what: null # deixado em branco de propósito: o filtro de palavras-chave já filtra
+  remoteok:
+    ativo: true
+  arbeitnow:
+    ativo: true
+  himalayas:
+    ativo: true
+    country: Brazil # filtro real da API; a palavra-chave ainda passa por cima
+    q: null
 
 notificacao:
   telegram: true

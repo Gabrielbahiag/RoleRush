@@ -33,10 +33,27 @@ class AdzunaConfig(BaseModel):
     where: str | None = None
 
 
+class RemoteOKConfig(BaseModel):
+    ativo: bool = False
+
+
+class ArbeitnowConfig(BaseModel):
+    ativo: bool = False
+
+
+class HimalayasConfig(BaseModel):
+    ativo: bool = False
+    country: str | None = None
+    q: str | None = None
+
+
 class FontesConfig(BaseModel):
     remotive: RemotiveConfig = Field(default_factory=RemotiveConfig)
     github_repo: GithubRepoConfig = Field(default_factory=GithubRepoConfig)
     adzuna: AdzunaConfig = Field(default_factory=AdzunaConfig)
+    remoteok: RemoteOKConfig = Field(default_factory=RemoteOKConfig)
+    arbeitnow: ArbeitnowConfig = Field(default_factory=ArbeitnowConfig)
+    himalayas: HimalayasConfig = Field(default_factory=HimalayasConfig)
 
 
 class NotificacaoConfig(BaseModel):
