@@ -76,6 +76,8 @@ Two workflows:
 - `tests/test_filters.py` — pure function tests, no mocking needed.
 - `tests/test_storage.py` — SQLite against `tmp_path`.
 - `tests/test_sources.py` — HTTP mocked with `respx` (`@respx.mock` + `respx.get(url).mock(return_value=Response(...))`).
+- `tests/test_notifier.py` — HTTP mocked with `respx` the same way; covers message formatting/escaping, the unconfigured-credentials error path, and a mocked Telegram HTTP error. Never hits the real Telegram API.
+- `tests/test_main.py` — `coletar_vagas()` tested directly with fake `Source` doubles (one raises, to check fault isolation + logging via `caplog`). `run()` tested end-to-end with `monkeypatch.setattr("monitor.main.carregar_config", ...)` and `"monitor.main.montar_fontes", ...` swapped for fakes, plus `respx` for the Telegram call — this is what proves notify-only-new and idempotency (second `run()` on the same data notifies nothing) without touching any real source or config.yaml.
 
 ## Further reading
 
