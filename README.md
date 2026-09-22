@@ -13,7 +13,8 @@ só me interrompe quando aparece algo relevante e novo.
 ## Como funciona
 
 ```
-fontes (Remotive, RemoteOK, Arbeitnow, Himalayas, Adzuna, issues do GitHub) -> filtros -> dedup (SQLite) -> Telegram
+fontes (Remotive, RemoteOK, Arbeitnow, Himalayas, Adzuna, Jobicy, The Muse,
+Greenhouse, Lever, Ashby, issues do GitHub) -> filtros -> dedup (SQLite) -> Telegram
 ```
 
 Cada fonte implementa a mesma interface (`Source.fetch() -> list[Vaga]`), então
@@ -34,8 +35,13 @@ src/monitor/
 │   ├── arbeitnow.py           # API pública do Arbeitnow (cobertura forte Europa/DACH)
 │   ├── himalayas.py            # API com busca real por país + palavra-chave
 │   ├── github_repo.py           # issues de repos tipo backend-br/vagas
-│   └── adzuna.py                  # agregador com filtro real de localização (ex: Brasília)
-└── main.py                          # orquestra: coleta -> filtra -> dedup -> notifica
+│   ├── adzuna.py                  # agregador com filtro real de localização (ex: Brasília)
+│   ├── jobicy.py                    # API pública do Jobicy (agregador 100% remoto)
+│   ├── themuse.py                     # API pública do The Muse (dados de vaga + empresa)
+│   ├── greenhouse.py                    # endpoint público do ATS Greenhouse, por empresa
+│   ├── lever.py                           # endpoint público do ATS Lever, por empresa
+│   └── ashby.py                             # endpoint público do ATS Ashby, por empresa
+└── main.py                                    # orquestra: coleta -> filtra -> dedup -> notifica
 ```
 
 ## Rodando localmente
@@ -74,8 +80,8 @@ Segredos necessários (em *Settings → Secrets and variables → Actions*):
 - `ADZUNA_APP_ID`
 - `ADZUNA_APP_KEY`
 
-Remotive, RemoteOK, Arbeitnow e Himalayas não pedem credencial nenhuma —
-plugue e use.
+Remotive, RemoteOK, Arbeitnow, Himalayas, Jobicy, The Muse, Greenhouse, Lever
+e Ashby não pedem credencial nenhuma — plugue e use.
 
 `GITHUB_TOKEN` **não precisa ser cadastrado** — é um nome reservado que o
 próprio GitHub Actions injeta automaticamente em toda execução, escopado
@@ -83,6 +89,16 @@ pelo bloco `permissions:` do workflow. Ele só existe como variável opcional
 no `.env` local (veja [`.env.example`](.env.example)) para quem quiser rodar
 o monitor fora do Actions e evitar o rate limit de 60 req/h da API pública do
 GitHub.
+
+`THEMUSE_API_KEY` também é opcional: sem ela a API do The Muse funciona
+normalmente (500 req/h), a chave gratuita só eleva o limite pra 3.600 req/h.
+
+Greenhouse, Lever e Ashby são os ATS (sistema de recrutamento) por trás da
+página de carreira de cada empresa, não agregadores — cada um expõe um board
+por empresa, então é preciso listar manualmente quais empresas acompanhar em
+`fontes.greenhouse.empresas` / `fontes.lever.empresas` / `fontes.ashby.empresas`
+no `config.yaml` (o slug é o mesmo que aparece na URL da vaga na página de
+carreira da empresa).
 
 ## Criando o bot do Telegram
 

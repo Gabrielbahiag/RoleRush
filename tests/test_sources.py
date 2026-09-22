@@ -4,10 +4,15 @@ from httpx import Response
 
 from monitor.sources.adzuna import AdzunaSource
 from monitor.sources.arbeitnow import ArbeitnowSource
+from monitor.sources.ashby import AshbySource
 from monitor.sources.github_repo import GithubRepoSource
+from monitor.sources.greenhouse import GreenhouseSource
 from monitor.sources.himalayas import HimalayasSource
+from monitor.sources.jobicy import JobicySource
+from monitor.sources.lever import LeverSource
 from monitor.sources.remoteok import RemoteOKSource
 from monitor.sources.remotive import RemotiveSource
+from monitor.sources.themuse import TheMuseSource
 
 
 @respx.mock
@@ -205,3 +210,175 @@ def test_himalayas_source_mapeia_vagas():
     assert vaga.empresa == "CI&T"
     assert vaga.localizacao == "Brazil"
     assert vaga.remoto is None
+
+
+@respx.mock
+def test_jobicy_source_mapeia_vagas_e_marca_como_remoto():
+    respx.get("https://jobicy.com/api/v2/remote-jobs").mock(
+        return_value=Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": 777,
+                        "jobTitle": "Python Backend Developer",
+                        "companyName": "Acme",
+                        "url": "https://jobicy.com/jobs/777",
+                        "jobGeo": "Worldwide",
+                        "pubDate": "2026-07-01 00:00:00",
+                        "jobExcerpt": "vaga remota de python",
+                    }
+                ]
+            },
+        )
+    )
+
+    vagas = JobicySource().fetch()
+
+    assert len(vagas) == 1
+    vaga = vagas[0]
+    assert vaga.id == "jobicy:777"
+    assert vaga.titulo == "Python Backend Developer"
+    assert vaga.remoto is True
+
+
+@respx.mock
+def test_themuse_source_mapeia_vagas_e_pagina_ate_page_count():
+    rota = respx.get("https://www.themuse.com/api/public/jobs").mock(
+        side_effect=[
+            Response(
+                200,
+                json={
+                    "page_count": 2,
+                    "results": [
+                        {
+                            "id": 111,
+                            "name": "Python Engineer",
+                            "company": {"name": "Acme"},
+                            "refs": {"landing_page": "https://themuse.com/jobs/111"},
+                            "locations": [{"name": "Flexible / Remote"}],
+                            "publication_date": "2026-07-01T00:00:00Z",
+                            "contents": "vaga de python",
+                        }
+                    ],
+                },
+            ),
+            Response(
+                200,
+                json={
+                    "page_count": 2,
+                    "results": [
+                        {
+                            "id": 222,
+                            "name": "Data Engineer",
+                            "company": {"name": "Acme"},
+                            "refs": {"landing_page": "https://themuse.com/jobs/222"},
+                            "locations": [{"name": "Berlin, Germany"}],
+                            "publication_date": "2026-07-02T00:00:00Z",
+                            "contents": "vaga de dados",
+                        }
+                    ],
+                },
+            ),
+        ]
+    )
+
+    vagas = TheMuseSource().fetch()
+
+    assert rota.call_count == 2
+    assert len(vagas) == 2
+    assert vagas[0].id == "themuse:111"
+    assert vagas[0].empresa == "Acme"
+    assert vagas[0].localizacao == "Flexible / Remote"
+    assert vagas[0].remoto is True
+    assert vagas[1].id == "themuse:222"
+    assert vagas[1].remoto is False
+
+
+@respx.mock
+def test_greenhouse_source_mapeia_vagas_com_id_namespaced_por_empresa():
+    respx.get("https://boards-api.greenhouse.io/v1/boards/acme/jobs").mock(
+        return_value=Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": 456,
+                        "title": "Backend Engineer",
+                        "location": {"name": "Remote - Brazil"},
+                        "absolute_url": "https://boards.greenhouse.io/acme/jobs/456",
+                        "first_published": "2026-07-01T00:00:00Z",
+                        "content": "&lt;p&gt;descrição completa&lt;/p&gt;",
+                    }
+                ]
+            },
+        )
+    )
+
+    vagas = GreenhouseSource(empresa="acme").fetch()
+
+    assert len(vagas) == 1
+    vaga = vagas[0]
+    assert vaga.id == "greenhouse:acme:456"
+    assert vaga.empresa == "acme"
+    assert vaga.localizacao == "Remote - Brazil"
+    assert vaga.remoto is True
+
+
+@respx.mock
+def test_lever_source_mapeia_vagas_e_epoch_em_milissegundos():
+    respx.get("https://api.lever.co/v0/postings/acme").mock(
+        return_value=Response(
+            200,
+            json=[
+                {
+                    "id": "abc-123",
+                    "text": "Software Engineer",
+                    "hostedUrl": "https://jobs.lever.co/acme/abc-123",
+                    "categories": {"location": "Remote"},
+                    "workplaceType": "remote",
+                    "createdAt": 1784712627000,
+                    "descriptionPlain": "descrição da vaga",
+                }
+            ],
+        )
+    )
+
+    vagas = LeverSource(empresa="acme").fetch()
+
+    assert len(vagas) == 1
+    vaga = vagas[0]
+    assert vaga.id == "lever:acme:abc-123"
+    assert vaga.empresa == "acme"
+    assert vaga.remoto is True
+    assert vaga.publicada_em is not None
+
+
+@respx.mock
+def test_ashby_source_mapeia_vagas_com_id_namespaced_por_empresa():
+    respx.get("https://api.ashbyhq.com/posting-api/job-board/acme").mock(
+        return_value=Response(
+            200,
+            json={
+                "jobs": [
+                    {
+                        "id": "xyz-789",
+                        "title": "Data Scientist",
+                        "jobUrl": "https://jobs.ashbyhq.com/acme/xyz-789",
+                        "location": "Brazil",
+                        "isRemote": True,
+                        "publishedAt": "2026-07-01T00:00:00Z",
+                        "descriptionPlain": "descrição da vaga",
+                    }
+                ]
+            },
+        )
+    )
+
+    vagas = AshbySource(empresa="acme").fetch()
+
+    assert len(vagas) == 1
+    vaga = vagas[0]
+    assert vaga.id == "ashby:acme:xyz-789"
+    assert vaga.empresa == "acme"
+    assert vaga.remoto is True

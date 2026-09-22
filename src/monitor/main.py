@@ -9,11 +9,16 @@ from monitor.models import Vaga
 from monitor.notifier import TelegramNotifier
 from monitor.sources.adzuna import AdzunaSource
 from monitor.sources.arbeitnow import ArbeitnowSource
+from monitor.sources.ashby import AshbySource
 from monitor.sources.base import Source
 from monitor.sources.github_repo import GithubRepoSource
+from monitor.sources.greenhouse import GreenhouseSource
 from monitor.sources.himalayas import HimalayasSource
+from monitor.sources.jobicy import JobicySource
+from monitor.sources.lever import LeverSource
 from monitor.sources.remoteok import RemoteOKSource
 from monitor.sources.remotive import RemotiveSource
+from monitor.sources.themuse import TheMuseSource
 from monitor.storage import Storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -58,6 +63,29 @@ def montar_fontes(config: Config) -> list[Source]:
                 q=config.fontes.himalayas.q,
             )
         )
+
+    if config.fontes.jobicy.ativo:
+        fontes.append(JobicySource())
+
+    if config.fontes.themuse.ativo:
+        fontes.append(
+            TheMuseSource(
+                categoria=config.fontes.themuse.categoria,
+                localizacao=config.fontes.themuse.localizacao,
+            )
+        )
+
+    if config.fontes.greenhouse.ativo:
+        for empresa in config.fontes.greenhouse.empresas:
+            fontes.append(GreenhouseSource(empresa=empresa))
+
+    if config.fontes.lever.ativo:
+        for empresa in config.fontes.lever.empresas:
+            fontes.append(LeverSource(empresa=empresa))
+
+    if config.fontes.ashby.ativo:
+        for empresa in config.fontes.ashby.empresas:
+            fontes.append(AshbySource(empresa=empresa))
 
     return fontes
 

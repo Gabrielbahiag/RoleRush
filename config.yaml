@@ -44,6 +44,21 @@ fontes:
     ativo: true
     country: Brazil # filtro real da API; a palavra-chave ainda passa por cima
     q: null
+  jobicy:
+    ativo: true # agregador de vagas remotas, sem credencial
+  themuse:
+    ativo: true
+    categoria: null
+    localizacao: null
+  greenhouse:
+    ativo: false # ative e preencha "empresas" com os boards que quiser acompanhar
+    empresas: [] # ex: [airbnb, stripe] — o slug é o mesmo da URL da vaga
+  lever:
+    ativo: false
+    empresas: [] # ex: [netlify] — só funciona pra empresas que usam Lever
+  ashby:
+    ativo: false
+    empresas: [] # ex: [ashby] — só funciona pra empresas que usam Ashby
 
 notificacao:
   telegram: true

@@ -47,6 +47,31 @@ class HimalayasConfig(BaseModel):
     q: str | None = None
 
 
+class JobicyConfig(BaseModel):
+    ativo: bool = False
+
+
+class TheMuseConfig(BaseModel):
+    ativo: bool = False
+    categoria: str | None = None
+    localizacao: str | None = None
+
+
+class GreenhouseConfig(BaseModel):
+    ativo: bool = False
+    empresas: list[str] = Field(default_factory=list)
+
+
+class LeverConfig(BaseModel):
+    ativo: bool = False
+    empresas: list[str] = Field(default_factory=list)
+
+
+class AshbyConfig(BaseModel):
+    ativo: bool = False
+    empresas: list[str] = Field(default_factory=list)
+
+
 class FontesConfig(BaseModel):
     remotive: RemotiveConfig = Field(default_factory=RemotiveConfig)
     github_repo: GithubRepoConfig = Field(default_factory=GithubRepoConfig)
@@ -54,6 +79,11 @@ class FontesConfig(BaseModel):
     remoteok: RemoteOKConfig = Field(default_factory=RemoteOKConfig)
     arbeitnow: ArbeitnowConfig = Field(default_factory=ArbeitnowConfig)
     himalayas: HimalayasConfig = Field(default_factory=HimalayasConfig)
+    jobicy: JobicyConfig = Field(default_factory=JobicyConfig)
+    themuse: TheMuseConfig = Field(default_factory=TheMuseConfig)
+    greenhouse: GreenhouseConfig = Field(default_factory=GreenhouseConfig)
+    lever: LeverConfig = Field(default_factory=LeverConfig)
+    ashby: AshbyConfig = Field(default_factory=AshbyConfig)
 
 
 class NotificacaoConfig(BaseModel):
