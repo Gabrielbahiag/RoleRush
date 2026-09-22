@@ -54,7 +54,11 @@ Single internal representation all sources normalize into. **`id` is namespaced 
 
 ### Storage / dedup ([src/monitor/storage.py](src/monitor/storage.py))
 
-SQLite table `vagas_vistas`, keyed by `Vaga.id`. Uses `INSERT OR IGNORE` (not plain `INSERT`) so `marcar_todas()` is idempotent — running the pipeline twice on the same data must not error or duplicate notifications.
+SQLite table `vagas_vistas` has two timestamp columns, both UTC (SQLite's `datetime('now')` is UTC by default, so no explicit timezone handling needed): `visto_em` (first time the id was ever seen, set once) and `ultimo_visto` (bumped every time the id reappears). `marcar_como_vista()`/`marcar_todas()` use an `INSERT ... ON CONFLICT(id) DO UPDATE SET ultimo_visto = ...` upsert — inserting a new id still only writes once (`visto_em` and `ultimo_visto` start equal via the column `DEFAULT`), and re-marking an existing id never touches `visto_em`, only bumps `ultimo_visto`. This keeps dedup/idempotency identical to before (`ja_vista`/`filtrar_novas` still just check id existence) while fixing a real bug: retention pruning.
+
+`retencao_dias` in `config.yaml` (default `90`, `null` disables it) bounds the table's growth: `run()` calls `storage.remover_vistas_antigas(dias)` right after opening `Storage`, before dedup. **The prune is keyed on `ultimo_visto`, never on `visto_em`.** Pruning by first-seen date was the original (buggy) implementation — a posting a source keeps returning on every run would still get deleted once `visto_em` crossed the retention window, and then get treated as "new" and re-notified on the very next run, even though it never actually left the dedup table's blind spot. Keying on `ultimo_visto` means a continuously-seen posting is never pruned, no matter how old `visto_em` is; only postings nobody has reported back in `retencao_dias` actually get removed (and *those* can legitimately cause a re-notification if a source returns them again later — that part's still an accepted trade-off, not a bug).
+
+`Storage.__init__` migrates old `vagas_vistas` tables that predate the `ultimo_visto` column (`ALTER TABLE ... ADD COLUMN` + backfill) automatically and safely — existing rows are backfilled with `ultimo_visto = datetime('now')` (not copied from `visto_em`), so a freshly-migrated `vagas.db` doesn't get its entire history mass-pruned on the very next run.
 
 ### Fault isolation
 
@@ -74,7 +78,7 @@ Two workflows:
 ## Testing conventions
 
 - `tests/test_filters.py` — pure function tests, no mocking needed.
-- `tests/test_storage.py` — SQLite against `tmp_path`.
+- `tests/test_storage.py` — SQLite against `tmp_path`. The `_inserir_com_data` helper seeds a row with explicit `visto_em`/`ultimo_visto` values via a raw `sqlite3.connect` (bypassing the `Storage` API) so retention tests can set up scenarios `marcar_*` can't reach directly — e.g. "first seen 120 days ago, last seen yesterday" to prove pruning follows `ultimo_visto`. `test_migracao_adiciona_coluna_ultimo_visto_em_banco_existente` hand-builds the pre-migration schema the same way, then asserts `Storage(caminho)` upgrades it safely.
 - `tests/test_sources.py` — HTTP mocked with `respx` (`@respx.mock` + `respx.get(url).mock(return_value=Response(...))`).
 - `tests/test_notifier.py` — HTTP mocked with `respx` the same way; covers message formatting/escaping, the unconfigured-credentials error path, and a mocked Telegram HTTP error. Never hits the real Telegram API.
 - `tests/test_main.py` — `coletar_vagas()` tested directly with fake `Source` doubles (one raises, to check fault isolation + logging via `caplog`). `run()` tested end-to-end with `monkeypatch.setattr("monitor.main.carregar_config", ...)` and `"monitor.main.montar_fontes", ...` swapped for fakes, plus `respx` for the Telegram call — this is what proves notify-only-new and idempotency (second `run()` on the same data notifies nothing) without touching any real source or config.yaml.

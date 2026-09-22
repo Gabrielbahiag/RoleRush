@@ -62,3 +62,8 @@ fontes:
 
 notificacao:
   telegram: true
+
+# quantos dias manter uma vaga no histórico de dedup (vagas_vistas) antes de
+# podar; null = manter pra sempre. Uma vaga podada volta a ser tratada como
+# nova se a fonte ainda a retornar — aceitável pra manter o vagas.db pequeno.
+retencao_dias: 90

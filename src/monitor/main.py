@@ -114,6 +114,11 @@ def run(config_path: str = "config.yaml", db_path: str = "vagas.db", enviar: boo
     vagas = aplicar_filtros(vagas, config.filtros)
 
     storage = Storage(db_path)
+    if config.retencao_dias:
+        removidas = storage.remover_vistas_antigas(config.retencao_dias)
+        if removidas:
+            logger.info("%d registro(s) antigo(s) removido(s) do histórico de dedup", removidas)
+
     novas = storage.filtrar_novas(vagas)
     logger.info("%d vaga(s) nova(s) após filtro e dedup", len(novas))
 

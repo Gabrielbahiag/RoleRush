@@ -94,6 +94,8 @@ class Config(BaseModel):
     filtros: FiltrosConfig = Field(default_factory=FiltrosConfig)
     fontes: FontesConfig = Field(default_factory=FontesConfig)
     notificacao: NotificacaoConfig = Field(default_factory=NotificacaoConfig)
+    # None = mantém o histórico de dedup pra sempre (comportamento anterior).
+    retencao_dias: int | None = None
 
 
 def carregar_config(caminho: str | Path = "config.yaml") -> Config:
