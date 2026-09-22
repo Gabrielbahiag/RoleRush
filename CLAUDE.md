@@ -22,6 +22,8 @@ Without a configured Telegram token, the monitor still runs fully and just print
 
 Adjust active sources and filters in [config.yaml](config.yaml), never by editing code.
 
+**The test suite must never depend on the network or on real secrets.** Every test that touches HTTP mocks it with `respx`; nothing calls a real API, not even for sources that in principle work without a key. This is enforced by CI (see below), not just convention — a new source or notifier change needs a mocked test, not a live smoke test.
+
 ## Architecture
 
 Four-stage pipeline in `run()` in [src/monitor/main.py](src/monitor/main.py):
@@ -62,9 +64,12 @@ In `coletar_vagas()` ([src/monitor/main.py](src/monitor/main.py)), each source's
 
 `httpx`/`httpcore` loggers are explicitly set to `WARNING` in `main.py`. This is not generic hygiene — it fixed a real incident: `logging.basicConfig(level=INFO)` elevates every logger process-wide, including `httpx`'s, which logs full request URLs; the Telegram API embeds the bot token directly in the URL path (`/bot<TOKEN>/sendMessage`), so INFO-level httpx logging leaked the token. If you touch logging config in `main.py`, keep those two loggers suppressed.
 
-### GitHub Actions automation ([.github/workflows/monitor.yml](.github/workflows/monitor.yml))
+### GitHub Actions automation
 
-Runs every 6 hours via `cron` (plus manual `workflow_dispatch`). Because the runner is ephemeral, `vagas.db` is committed back to the repo at the end of each run — that's how dedup state survives between runs without paid infrastructure. Required secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. `GITHUB_TOKEN` does *not* need to be registered — Actions injects it automatically, scoped by the workflow's `permissions:` block; it's only relevant as an optional local env var to avoid the public GitHub API's 60 req/h rate limit.
+Two workflows:
+
+- [.github/workflows/tests.yml](.github/workflows/tests.yml) — `uv sync --frozen` + `uv run pytest` on every push and pull request. No secrets, no network calls (see the testing-conventions note above), so it runs the same for anyone forking the repo.
+- [.github/workflows/monitor.yml](.github/workflows/monitor.yml) — runs every 6 hours via `cron` (plus manual `workflow_dispatch`). Runs `uv run pytest` **before** `python -m monitor.main`; since GitHub Actions stops a job at the first failing step by default, a broken test aborts the run before it ever collects or notifies anything real. Because the runner is ephemeral, `vagas.db` is committed back to the repo at the end of each run — that's how dedup state survives between runs without paid infrastructure. Required secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. `GITHUB_TOKEN` does *not* need to be registered — Actions injects it automatically, scoped by the workflow's `permissions:` block; it's only relevant as an optional local env var to avoid the public GitHub API's 60 req/h rate limit.
 
 ## Testing conventions
 

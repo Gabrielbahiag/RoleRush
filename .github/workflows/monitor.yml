@@ -21,6 +21,9 @@ jobs:
       - name: Instalar dependências
         run: uv sync --frozen
 
+      - name: Rodar testes
+        run: uv run pytest
+
       - name: Rodar monitor
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
