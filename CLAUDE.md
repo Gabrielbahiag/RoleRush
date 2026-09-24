@@ -70,6 +70,8 @@ SQLite table `vagas_vistas` has two timestamp columns, both UTC (SQLite's `datet
 
 `Storage.__init__` migrates old `vagas_vistas` tables that predate the `ultimo_visto` column (`ALTER TABLE ... ADD COLUMN` + backfill) automatically and safely — existing rows are backfilled with `ultimo_visto = datetime('now')` (not copied from `visto_em`), so a freshly-migrated `vagas.db` doesn't get its entire history mass-pruned on the very next run.
 
+A second table, `vagas_detalhes`, snapshots the postings that were actually **notified** (title, company, url, source, location, description) so `rolerush curriculo --vaga <id>` can find the description later. Being a new table, `CREATE TABLE IF NOT EXISTS` is itself the safe migration. Retention cascades into it (`DELETE ... WHERE id NOT IN (SELECT id FROM vagas_vistas)`). Note the asymmetry in `run()`, and keep it: details are saved only for notified postings, but `marcar_todas()` marks **every** new posting as seen, including ones `aderencia_minima` filtered out — otherwise they'd resurface on every run. The accepted cost is that lowering `aderencia_minima` later does not bring back postings already filtered.
+
 ### Fault isolation
 
 In `coletar_vagas()` ([src/monitor/main.py](src/monitor/main.py)), each source's `fetch()` is wrapped in its own try/except that logs and `continue`s — one broken or misconfigured source (e.g. Adzuna without credentials, a 404'd repo) must not take down the whole run. Preserve this per-source isolation when adding sources.

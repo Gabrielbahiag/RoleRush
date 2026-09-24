@@ -4,9 +4,13 @@ import os
 
 import httpx
 
+from monitor.curriculo.score import Aderencia
 from monitor.models import Vaga
 
 API_BASE = "https://api.telegram.org"
+
+# a mensagem é pra bater o olho no celular; lacuna demais vira parede de texto.
+_MAX_LACUNAS_NA_MENSAGEM = 4
 
 
 class TelegramNotifier:
@@ -24,12 +28,15 @@ class TelegramNotifier:
     def configurado(self) -> bool:
         return bool(self.token and self.chat_id)
 
-    def notificar_vaga(self, vaga: Vaga) -> None:
-        self.enviar_mensagem(_formatar_vaga(vaga))
+    def notificar_vaga(self, vaga: Vaga, aderencia: Aderencia | None = None) -> None:
+        self.enviar_mensagem(_formatar_vaga(vaga, aderencia))
 
-    def notificar_vagas(self, vagas: list[Vaga]) -> None:
+    def notificar_vagas(
+        self, vagas: list[Vaga], aderencias: dict[str, Aderencia] | None = None
+    ) -> None:
+        aderencias = aderencias or {}
         for vaga in vagas:
-            self.notificar_vaga(vaga)
+            self.notificar_vaga(vaga, aderencias.get(vaga.id))
 
     def enviar_mensagem(self, texto: str) -> None:
         if not self.configurado:
@@ -48,15 +55,27 @@ class TelegramNotifier:
             resposta.raise_for_status()
 
 
-def _formatar_vaga(vaga: Vaga) -> str:
+def _formatar_vaga(vaga: Vaga, aderencia: Aderencia | None = None) -> str:
     partes = [f"<b>{_escapar(vaga.titulo)}</b>"]
     if vaga.empresa:
         partes.append(_escapar(vaga.empresa))
     if vaga.localizacao:
         partes.append(_escapar(vaga.localizacao))
     partes.append(vaga.url)
-    partes.append(f"fonte: {vaga.fonte}")
+    if aderencia is not None:
+        partes.append(_formatar_aderencia(aderencia))
+    # o id vai na mensagem porque é o argumento de
+    # `rolerush curriculo --vaga <id>` na máquina local.
+    partes.append(f"fonte: {vaga.fonte} · id: {_escapar(vaga.id)}")
     return "\n".join(partes)
+
+
+def _formatar_aderencia(aderencia: Aderencia) -> str:
+    linha = f"aderência: {aderencia.score}%"
+    if aderencia.lacunas:
+        faltando = ", ".join(aderencia.lacunas[:_MAX_LACUNAS_NA_MENSAGEM])
+        linha += f" · faltam: {_escapar(faltando)}"
+    return linha
 
 
 def _escapar(texto: str) -> str:

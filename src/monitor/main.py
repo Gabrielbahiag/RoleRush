@@ -4,6 +4,9 @@ import logging
 import sys
 
 from monitor.config import Config, carregar_config
+from monitor.curriculo.extracao import extrair_requisitos
+from monitor.curriculo.perfil import fonte_de_aderencia
+from monitor.curriculo.score import Aderencia, calcular_aderencia
 from monitor.filters import aplicar_filtros
 from monitor.models import Vaga
 from monitor.notifier import TelegramNotifier
@@ -103,6 +106,29 @@ def coletar_vagas(fontes: list[Source]) -> list[Vaga]:
     return vagas
 
 
+def calcular_aderencias(vagas: list[Vaga], config: Config) -> dict[str, Aderencia]:
+    fonte = fonte_de_aderencia(config)
+    if fonte is None:
+        logger.info("Aderência desligada: sem currículo-mestre nem skills_perfil no config")
+        return {}
+
+    dicionario, minhas_skills = fonte
+    aderencias: dict[str, Aderencia] = {}
+    for vaga in vagas:
+        # o título costuma carregar stack que não se repete na descrição.
+        requisitos = extrair_requisitos(f"{vaga.titulo}\n{vaga.descricao}", dicionario)
+        aderencias[vaga.id] = calcular_aderencia(requisitos, minhas_skills)
+    return aderencias
+
+
+def _passa_aderencia(vaga: Vaga, aderencias: dict[str, Aderencia], minima: int | None) -> bool:
+    if minima is None:
+        return True
+    aderencia = aderencias.get(vaga.id)
+    # sem pontuação não dá pra julgar: melhor notificar do que engolir a vaga.
+    return aderencia is None or aderencia.score >= minima
+
+
 def run(config_path: str = "config.yaml", db_path: str = "vagas.db", enviar: bool = True) -> list[Vaga]:
     config = carregar_config(config_path)
     fontes = montar_fontes(config)
@@ -122,16 +148,32 @@ def run(config_path: str = "config.yaml", db_path: str = "vagas.db", enviar: boo
     novas = storage.filtrar_novas(vagas)
     logger.info("%d vaga(s) nova(s) após filtro e dedup", len(novas))
 
-    if novas and enviar and config.notificacao.telegram:
+    aderencias = calcular_aderencias(novas, config)
+    notificaveis = [
+        vaga for vaga in novas if _passa_aderencia(vaga, aderencias, config.aderencia_minima)
+    ]
+    if len(notificaveis) != len(novas):
+        logger.info(
+            "%d vaga(s) abaixo da aderência mínima (%s)",
+            len(novas) - len(notificaveis),
+            config.aderencia_minima,
+        )
+
+    if notificaveis and enviar and config.notificacao.telegram:
         notifier = TelegramNotifier()
         if notifier.configurado:
-            notifier.notificar_vagas(novas)
+            notifier.notificar_vagas(notificaveis, aderencias)
         else:
             logger.warning("Notificação Telegram habilitada, mas token/chat_id ausentes")
 
-    for vaga in novas:
-        print(f"- [{vaga.fonte}] {vaga.titulo} @ {vaga.empresa} — {vaga.url}")
+    for vaga in notificaveis:
+        aderencia = aderencias.get(vaga.id)
+        score = f" [{aderencia.score}%]" if aderencia else ""
+        print(f"- [{vaga.fonte}]{score} {vaga.titulo} @ {vaga.empresa} — {vaga.url}")
 
+    # snapshot só do que foi notificado; o dedup vale pra toda vaga nova,
+    # inclusive a barrada pela aderência (senão ela volta a cada execução).
+    storage.salvar_detalhes(notificaveis)
     storage.marcar_todas(novas)
     return novas
 

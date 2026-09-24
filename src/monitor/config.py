@@ -95,13 +95,13 @@ class CurriculoConfig(BaseModel):
     # dado pessoal: fica fora do git, então não existe no runner do Actions.
     mestre: str = "curriculo_mestre.yaml"
     skills: str = "config/skills.yaml"
-    # alternativa versionável pro Actions: só a lista de skills canônicas,
-    # sem nome, contato ou histórico. Vazio = sem pontuação lá.
-    skills_perfil: list[str] = Field(default_factory=list)
     # "nenhum" mantém a feature 100% determinística e sem custo; nome errado
     # explode aqui, na carga, e não no meio da geração do currículo.
     provedor: Literal["nenhum", "claude-cli"] = "nenhum"
     timeout_ia: float = 60.0
+    # alternativa versionável pro Actions: só a lista de skills canônicas,
+    # sem nome, contato ou histórico. Vazio = sem pontuação lá.
+    skills_perfil: list[str] = Field(default_factory=list)
 
 
 class Config(BaseModel):
@@ -111,6 +111,8 @@ class Config(BaseModel):
     curriculo: CurriculoConfig = Field(default_factory=CurriculoConfig)
     # None = mantém o histórico de dedup pra sempre (comportamento anterior).
     retencao_dias: int | None = None
+    # None = notifica tudo; sem fonte de pontuação, o corte é ignorado.
+    aderencia_minima: int | None = None
 
 
 def carregar_config(caminho: str | Path = "config.yaml") -> Config:
