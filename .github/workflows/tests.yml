@@ -15,7 +15,9 @@ jobs:
         uses: astral-sh/setup-uv@v3
 
       - name: Instalar dependências
-        run: uv sync --frozen
+        # --extra dev: pytest e respx estão em optional-dependencies, que o
+        # uv sync não instala sozinho. Sem isso o passo abaixo nem acha o pytest.
+        run: uv sync --frozen --extra dev
 
       - name: Rodar testes
         run: uv run pytest

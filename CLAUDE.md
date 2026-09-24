@@ -13,10 +13,13 @@ Dependency manager is [uv](https://docs.astral.sh/uv/) (not pip/poetry).
 ```bash
 uv sync                        # create venv, install deps (use --frozen in CI)
 cp .env.example .env           # then fill in TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID / etc.
+uv sync --extra dev            # pytest/respx live in optional-dependencies, NOT installed by a plain sync
 uv run python -m monitor.main  # run the pipeline once: collect -> filter -> dedup -> notify
 uv run pytest                  # run the full test suite
 uv run pytest tests/test_filters.py::test_palavra_curta_nao_da_falso_positivo_em_substring  # single test
 ```
+
+**`uv sync` without `--extra dev` uninstalls pytest**, so both workflows use `uv sync --frozen --extra dev`; a plain `--frozen` makes `uv run pytest` fail with "program not found" and, in `monitor.yml`, that aborts the job before the monitor ever runs.
 
 Without a configured Telegram token, the monitor still runs fully and just prints new postings to the terminal instead of sending them (skipped with a log warning) — this is the normal way to test locally without spamming Telegram.
 
@@ -72,7 +75,7 @@ In `coletar_vagas()` ([src/monitor/main.py](src/monitor/main.py)), each source's
 
 Two workflows:
 
-- [.github/workflows/tests.yml](.github/workflows/tests.yml) — `uv sync --frozen` + `uv run pytest` on every push and pull request. No secrets, no network calls (see the testing-conventions note above), so it runs the same for anyone forking the repo.
+- [.github/workflows/tests.yml](.github/workflows/tests.yml) — `uv sync --frozen --extra dev` + `uv run pytest` on every push and pull request. No secrets, no network calls (see the testing-conventions note above), so it runs the same for anyone forking the repo.
 - [.github/workflows/monitor.yml](.github/workflows/monitor.yml) — runs every 6 hours via `cron` (plus manual `workflow_dispatch`). Runs `uv run pytest` **before** `python -m monitor.main`; since GitHub Actions stops a job at the first failing step by default, a broken test aborts the run before it ever collects or notifies anything real. Because the runner is ephemeral, `vagas.db` is committed back to the repo at the end of each run — that's how dedup state survives between runs without paid infrastructure. Required secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. `GITHUB_TOKEN` does *not* need to be registered — Actions injects it automatically, scoped by the workflow's `permissions:` block; it's only relevant as an optional local env var to avoid the public GitHub API's 60 req/h rate limit.
 
 ## Testing conventions
