@@ -66,6 +66,28 @@ def test_documento_traz_nome_contato_e_conteudo_selecionado(tmp_path, mestre, di
     assert primeiro_bullet.texto_para("pt") in conteudo
 
 
+def test_reescrita_aprovada_substitui_o_texto_original(tmp_path, mestre, dicionario):
+    destino = tmp_path / "cv.docx"
+    adaptado = _adaptado(mestre, dicionario)
+    bullet = adaptado.experiencias[0].bullets[0]
+
+    gerar_docx(adaptado, destino, {bullet.id: "Texto reescrito e aprovado."})
+
+    conteudo = "\n".join(_paragrafos(destino))
+    assert "Texto reescrito e aprovado." in conteudo
+    assert bullet.texto_para("pt") not in conteudo
+
+
+def test_bullet_sem_reescrita_mantem_o_original(tmp_path, mestre, dicionario):
+    destino = tmp_path / "cv.docx"
+    adaptado = _adaptado(mestre, dicionario)
+    bullet = adaptado.experiencias[0].bullets[0]
+
+    gerar_docx(adaptado, destino, reescritas={})
+
+    assert bullet.texto_para("pt") in "\n".join(_paragrafos(destino))
+
+
 def test_estrutura_e_ats_sem_tabela_e_sem_imagem(tmp_path, mestre, dicionario):
     destino = tmp_path / "cv.docx"
 

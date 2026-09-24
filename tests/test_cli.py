@@ -136,3 +136,52 @@ def test_idioma_pode_ser_forcado_pela_flag(tmp_path):
 def test_sem_subcomando_nao_explode(capsys):
     with pytest.raises(SystemExit):
         main([])
+
+
+def _config_com_ia(tmp_path) -> str:
+    caminho = tmp_path / "config.yaml"
+    caminho.write_text(
+        yaml.safe_dump(
+            {"curriculo": {"mestre": EXEMPLO, "skills": SKILLS, "provedor": "claude-cli"}}
+        ),
+        encoding="utf-8",
+    )
+    return str(caminho)
+
+
+def test_sem_ia_nao_chama_o_provedor_mesmo_com_ele_ligado_no_config(tmp_path, monkeypatch):
+    def nao_deveria_rodar(*args, **kwargs):
+        raise AssertionError("--sem-ia não pode chamar o provedor de IA")
+
+    monkeypatch.setattr("monitor.curriculo.llm.subprocess.run", nao_deveria_rodar)
+
+    codigo = main(
+        [
+            "curriculo",
+            "--texto",
+            DESCRICAO,
+            "--sem-ia",
+            "--config",
+            _config_com_ia(tmp_path),
+            "--saida",
+            str(tmp_path / "saida"),
+        ]
+    )
+
+    assert codigo == 0
+
+
+def test_falha_do_provedor_nao_derruba_a_geracao(tmp_path, monkeypatch, capsys):
+    # IA ligada mas indisponível: o currículo sai igual, com os textos originais.
+    monkeypatch.setattr(
+        "monitor.curriculo.llm.subprocess.run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError("claude ausente")),
+    )
+    destino = tmp_path / "saida"
+
+    codigo = main(
+        ["curriculo", "--texto", DESCRICAO, "--config", _config_com_ia(tmp_path), "--saida", str(destino)]
+    )
+
+    assert codigo == 0
+    assert len(list(destino.glob("*.docx"))) == 1

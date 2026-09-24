@@ -7,8 +7,10 @@ from pathlib import Path
 from monitor.config import Config, carregar_config
 from monitor.curriculo.documento import gerar_docx, nome_de_arquivo
 from monitor.curriculo.extracao import RequisitosVaga, extrair_requisitos
+from monitor.curriculo.llm import ProvedorNenhum, montar_provedor
 from monitor.curriculo.mestre import carregar_curriculo
 from monitor.curriculo.perfil import fonte_de_aderencia
+from monitor.curriculo.reescrita import reescrever
 from monitor.curriculo.score import Aderencia, calcular_aderencia, skills_canonicas_do_curriculo
 from monitor.curriculo.selecao import selecionar
 from monitor.curriculo.skills import DicionarioSkills, carregar_skills
@@ -81,12 +83,20 @@ def _comando_curriculo(
     mestre = carregar_curriculo(caminho_mestre)
     adaptado = selecionar(mestre, requisitos, dicionario, idioma=args.idioma)
 
+    provedor = ProvedorNenhum() if args.sem_ia else montar_provedor(config)
+    reescrita = reescrever(adaptado, provedor, mestre, dicionario)
+
     destino = Path(args.saida) / nome_de_arquivo(
         vaga.empresa if vaga else "", vaga.titulo if vaga else ""
     )
-    gerar_docx(adaptado, destino)
+    gerar_docx(adaptado, destino, reescrita.textos)
 
     print(f"currículo gerado: {destino}")
+    if reescrita.textos:
+        print(f"bullets reescritos pela IA: {len(reescrita.textos)}")
+    for rejeicao in reescrita.rejeicoes:
+        # transparência: o original foi mantido, e o motivo fica registrado.
+        print(f"reescrita descartada ({rejeicao.id}): {rejeicao.motivo}")
     _imprimir_aderencia(calcular_aderencia(requisitos, skills_canonicas_do_curriculo(mestre, dicionario)))
     return 0
 
@@ -121,6 +131,11 @@ def _parser() -> argparse.ArgumentParser:
         entrada.add_argument("--arquivo", help="arquivo com a descrição da vaga")
         entrada.add_argument("--texto", help="descrição da vaga colada direto")
         sub.add_argument("--idioma", choices=("pt", "en"), help="padrão: o idioma da vaga")
+        sub.add_argument(
+            "--sem-ia",
+            action="store_true",
+            help="ignora o provedor do config e usa só o modo determinístico",
+        )
         sub.add_argument("--config", default="config.yaml")
         sub.add_argument("--db", default="vagas.db")
         sub.add_argument("--saida", default="saida", help="diretório do .docx gerado")

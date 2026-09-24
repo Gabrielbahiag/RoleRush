@@ -75,3 +75,8 @@ curriculo:
   # também por lá, liste aqui só as skills canônicas — sem nome, contato nem
   # histórico. Vazio = sem pontuação no Actions (só localmente).
   skills_perfil: []
+  # "nenhum" = tudo determinístico, sem custo e sem IA (padrão). "claude-cli"
+  # usa o Claude Code local pra reescrever os bullets — toda saída passa pelo
+  # guardrail anti-invenção, e o que não passa volta pro texto original.
+  provedor: nenhum
+  timeout_ia: 60.0

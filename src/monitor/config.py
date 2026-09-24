@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -97,6 +98,10 @@ class CurriculoConfig(BaseModel):
     # alternativa versionável pro Actions: só a lista de skills canônicas,
     # sem nome, contato ou histórico. Vazio = sem pontuação lá.
     skills_perfil: list[str] = Field(default_factory=list)
+    # "nenhum" mantém a feature 100% determinística e sem custo; nome errado
+    # explode aqui, na carga, e não no meio da geração do currículo.
+    provedor: Literal["nenhum", "claude-cli"] = "nenhum"
+    timeout_ia: float = 60.0
 
 
 class Config(BaseModel):

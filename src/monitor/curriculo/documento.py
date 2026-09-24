@@ -38,9 +38,16 @@ _TITULOS: dict[Idioma, dict[str, str]] = {
 }
 
 
-def gerar_docx(adaptado: CurriculoAdaptado, caminho: str | Path) -> Path:
+def gerar_docx(
+    adaptado: CurriculoAdaptado,
+    caminho: str | Path,
+    reescritas: dict[str, str] | None = None,
+) -> Path:
+    """Escreve o .docx. `reescritas` (id do bullet -> texto) entra no lugar do
+    original só para o que passou pelo guardrail; o mestre nunca é alterado."""
     caminho = Path(caminho)
     caminho.parent.mkdir(parents=True, exist_ok=True)
+    reescritas = reescritas or {}
 
     idioma = adaptado.idioma
     titulos = _TITULOS[idioma]
@@ -68,7 +75,7 @@ def gerar_docx(adaptado: CurriculoAdaptado, caminho: str | Path) -> Path:
                 negrito=True,
             )
             for bullet in selecionada.bullets:
-                _item(documento, bullet.texto_para(idioma))
+                _item(documento, reescritas.get(bullet.id) or bullet.texto_para(idioma))
 
     if adaptado.projetos:
         _secao(documento, titulos["projetos"])
@@ -82,7 +89,7 @@ def gerar_docx(adaptado: CurriculoAdaptado, caminho: str | Path) -> Path:
             if projeto.link:
                 _paragrafo(documento, projeto.link)
             for bullet in selecionado.bullets:
-                _item(documento, bullet.texto_para(idioma))
+                _item(documento, reescritas.get(bullet.id) or bullet.texto_para(idioma))
 
     if mestre.formacao:
         _secao(documento, titulos["formacao"])

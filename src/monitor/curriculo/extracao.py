@@ -91,6 +91,22 @@ def extrair_requisitos(texto_bruto: str, dicionario: DicionarioSkills) -> Requis
     )
 
 
+def skills_no_texto(texto: str, dicionario: DicionarioSkills) -> list[str]:
+    """Skills canônicas citadas num texto livre, sem separar por seção.
+
+    É o que o guardrail usa pra descobrir se um bullet reescrito citou
+    tecnologia que não existe no currículo-mestre.
+    """
+    regex = _regex_de_termos(dicionario)
+    mapa = dicionario.termos()
+    encontradas: list[str] = []
+    for linha in normalizar_texto(texto).splitlines():
+        for canonica in _skills_na_linha(linha, regex, mapa):
+            if canonica not in encontradas:
+                encontradas.append(canonica)
+    return encontradas
+
+
 def _regex_de_termos(dicionario: DicionarioSkills) -> re.Pattern[str]:
     # do mais longo pro mais curto: numa alternância o `re` aceita a primeira
     # que casar, então "google cloud platform" precisa vir antes de "google cloud".
