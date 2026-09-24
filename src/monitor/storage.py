@@ -14,6 +14,34 @@ CREATE TABLE IF NOT EXISTS vagas_vistas (
 );
 """
 
+# snapshot das vagas notificadas, pra `rolerush curriculo --vaga <id>` achar a
+# descrição depois. Guarda só o que a adaptação de currículo usa.
+_SCHEMA_DETALHES = """
+CREATE TABLE IF NOT EXISTS vagas_detalhes (
+    id TEXT PRIMARY KEY,
+    titulo TEXT NOT NULL DEFAULT '',
+    empresa TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    fonte TEXT NOT NULL DEFAULT '',
+    localizacao TEXT,
+    descricao TEXT NOT NULL DEFAULT '',
+    salvo_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+_UPSERT_DETALHES = """
+INSERT INTO vagas_detalhes (id, titulo, empresa, url, fonte, localizacao, descricao, salvo_em)
+VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+ON CONFLICT(id) DO UPDATE SET
+    titulo = excluded.titulo,
+    empresa = excluded.empresa,
+    url = excluded.url,
+    fonte = excluded.fonte,
+    localizacao = excluded.localizacao,
+    descricao = excluded.descricao,
+    salvo_em = excluded.salvo_em
+"""
+
 # upsert: numa vaga nova, visto_em e ultimo_visto nascem iguais (via DEFAULT
 # da coluna); numa vaga que reaparece, só ultimo_visto avança — visto_em
 # (primeiro avistamento) nunca muda depois de gravado.
@@ -38,6 +66,9 @@ class Storage:
         self.caminho = Path(caminho)
         with closing(self._conectar()) as conn:
             conn.execute(_SCHEMA)
+            # tabela nova: o CREATE ... IF NOT EXISTS já é a migração segura,
+            # não mexe em nada do que o banco antigo tem.
+            conn.execute(_SCHEMA_DETALHES)
             self._migrar_ultimo_visto(conn)
             conn.commit()
 
@@ -87,5 +118,48 @@ class Storage:
                 "DELETE FROM vagas_vistas WHERE ultimo_visto < datetime('now', ?)",
                 (f"-{dias} days",),
             )
+            # a retenção vale também pro snapshot: detalhe sem vaga vista
+            # correspondente é lixo.
+            conn.execute("DELETE FROM vagas_detalhes WHERE id NOT IN (SELECT id FROM vagas_vistas)")
             conn.commit()
             return cursor.rowcount
+
+    def salvar_detalhes(self, vagas: list[Vaga]) -> None:
+        """Guarda o snapshot das vagas notificadas (idempotente)."""
+        with closing(self._conectar()) as conn:
+            conn.executemany(
+                _UPSERT_DETALHES,
+                [
+                    (
+                        vaga.id,
+                        vaga.titulo,
+                        vaga.empresa,
+                        vaga.url,
+                        vaga.fonte,
+                        vaga.localizacao,
+                        vaga.descricao,
+                    )
+                    for vaga in vagas
+                ],
+            )
+            conn.commit()
+
+    def buscar_detalhes(self, vaga_id: str) -> Vaga | None:
+        with closing(self._conectar()) as conn:
+            linha = conn.execute(
+                "SELECT id, titulo, empresa, url, fonte, localizacao, descricao "
+                "FROM vagas_detalhes WHERE id = ?",
+                (vaga_id,),
+            ).fetchone()
+
+        if linha is None:
+            return None
+        return Vaga(
+            id=linha[0],
+            titulo=linha[1],
+            empresa=linha[2],
+            url=linha[3],
+            fonte=linha[4],
+            localizacao=linha[5],
+            descricao=linha[6],
+        )

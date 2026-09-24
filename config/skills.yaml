@@ -1,0 +1,135 @@
+# Dicionário de skills canônicas + sinônimos/grafias.
+#
+# Usado por dois caminhos (ver CURRICULO.md §5.2):
+#   1. extração de requisitos da vaga no modo sem IA;
+#   2. guardrail anti-invenção — decide se uma tecnologia citada num bullet
+#      reescrito existe mesmo no currículo-mestre.
+#
+# Regra: um mesmo termo não pode aparecer em duas skills (a carga falha).
+# Não repita a forma canônica dentro de "sinonimos" — ela já é reconhecida.
+
+skills:
+  # --- linguagens ---
+  - canonica: Python
+    categoria: linguagem
+    sinonimos: [python3, py]
+  - canonica: JavaScript
+    categoria: linguagem
+    sinonimos: [js, ecmascript]
+  - canonica: TypeScript
+    categoria: linguagem
+    sinonimos: [ts]
+  - canonica: Java
+    categoria: linguagem
+  - canonica: Go
+    categoria: linguagem
+    sinonimos: [golang]
+  - canonica: SQL
+    categoria: linguagem
+
+  # --- bancos de dados ---
+  - canonica: PostgreSQL
+    categoria: banco
+    sinonimos: [postgres, psql]
+  - canonica: MySQL
+    categoria: banco
+  - canonica: SQLite
+    categoria: banco
+  - canonica: MongoDB
+    categoria: banco
+    sinonimos: [mongo]
+  - canonica: Redis
+    categoria: banco
+
+  # --- frameworks e bibliotecas ---
+  - canonica: FastAPI
+    categoria: framework
+  - canonica: Django
+    categoria: framework
+  - canonica: Flask
+    categoria: framework
+  - canonica: React
+    categoria: framework
+    sinonimos: [reactjs, react.js]
+  - canonica: Node.js
+    categoria: framework
+    sinonimos: [node, nodejs]
+  - canonica: Pandas
+    categoria: dados
+  - canonica: NumPy
+    categoria: dados
+  - canonica: scikit-learn
+    categoria: dados
+    sinonimos: [sklearn, scikit learn]
+  - canonica: PyTorch
+    categoria: dados
+  - canonica: TensorFlow
+    categoria: dados
+
+  # --- dados e IA ---
+  - canonica: Machine Learning
+    categoria: dados
+    sinonimos: [ml, aprendizado de máquina, aprendizado de maquina]
+  - canonica: Inteligência Artificial
+    categoria: dados
+    sinonimos: [ia, ai, artificial intelligence, inteligencia artificial]
+  - canonica: LLM
+    categoria: dados
+    sinonimos: [llms, large language model, large language models, modelos de linguagem]
+  - canonica: Prompt Engineering
+    categoria: dados
+    sinonimos: [engenharia de prompt, prompt engineer]
+  - canonica: RAG
+    categoria: dados
+    sinonimos: [retrieval augmented generation]
+  - canonica: ETL
+    categoria: dados
+  - canonica: Apache Airflow
+    categoria: dados
+    sinonimos: [airflow]
+  - canonica: Apache Spark
+    categoria: dados
+    sinonimos: [spark, pyspark]
+  - canonica: Power BI
+    categoria: dados
+    sinonimos: [powerbi]
+
+  # --- infra e ferramentas ---
+  - canonica: Docker
+    categoria: infra
+  - canonica: Kubernetes
+    categoria: infra
+    sinonimos: [k8s]
+  - canonica: AWS
+    categoria: cloud
+    sinonimos: [amazon web services]
+  - canonica: Google Cloud
+    categoria: cloud
+    sinonimos: [gcp, google cloud platform]
+  - canonica: Azure
+    categoria: cloud
+    sinonimos: [microsoft azure]
+  - canonica: Terraform
+    categoria: infra
+  - canonica: Linux
+    categoria: infra
+  - canonica: Git
+    categoria: ferramenta
+  - canonica: GitHub Actions
+    categoria: ferramenta
+  - canonica: Pytest
+    categoria: ferramenta
+
+  # --- práticas ---
+  - canonica: REST API
+    categoria: pratica
+    sinonimos: [rest, api rest, apis rest, restful]
+  - canonica: CI/CD
+    categoria: pratica
+    sinonimos: [cicd, integração contínua, integracao continua]
+  - canonica: Testes Automatizados
+    categoria: pratica
+    sinonimos: [testes unitários, testes unitarios, unit tests, tdd]
+  - canonica: Scrum
+    categoria: pratica
+    sinonimos: [agile, ágil, metodologias ágeis]

@@ -67,3 +67,11 @@ notificacao:
 # podar; null = manter pra sempre. Uma vaga podada volta a ser tratada como
 # nova se a fonte ainda a retornar — aceitável pra manter o vagas.db pequeno.
 retencao_dias: 90
+
+curriculo:
+  mestre: curriculo_mestre.yaml # dado pessoal, fora do git (ver CURRICULO.md)
+  skills: config/skills.yaml
+  # o mestre não existe no runner do GitHub Actions. Pra ter score no Telegram
+  # também por lá, liste aqui só as skills canônicas — sem nome, contato nem
+  # histórico. Vazio = sem pontuação no Actions (só localmente).
+  skills_perfil: []

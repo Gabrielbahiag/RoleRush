@@ -59,9 +59,28 @@ vagas novas no terminal (a notificação é pulada com um aviso no log).
 
 Ajuste os filtros e as fontes ativas em [`config.yaml`](config.yaml).
 
+## Adaptação de currículo
+
+A partir de um currículo-mestre e da descrição de uma vaga, o Role Rush
+calcula a aderência e gera um `.docx` pronto para ATS — priorizando as
+experiências que a vaga pede, **sem inventar nada** que não esteja no mestre.
+Roda localmente, de graça e sem IA.
+
+```bash
+cp curriculo_mestre.example.yaml curriculo_mestre.yaml   # e preencha com o seu
+uv run rolerush aderencia --arquivo vaga.txt             # só o score e as lacunas
+uv run rolerush curriculo --arquivo vaga.txt             # gera o .docx em saida/
+uv run rolerush curriculo --vaga remotive:123            # usa uma vaga já notificada
+```
+
+O currículo-mestre real e os arquivos gerados ficam fora do git. A spec
+completa — arquitetura, guardrail anti-invenção e roadmap — está em
+[`CURRICULO.md`](CURRICULO.md).
+
 ## Testes
 
 ```bash
+uv sync --extra dev   # pytest e respx estão em optional-dependencies
 uv run pytest
 ```
 

@@ -1,0 +1,140 @@
+# Exemplo FICTÍCIO de currículo-mestre.
+#
+# Este arquivo é versionado de propósito: documenta o formato e alimenta os
+# testes. O currículo real vive em `curriculo_mestre.yaml`, que está no
+# .gitignore e nunca entra no repositório (ver CURRICULO.md, premissa 4).
+#
+# Regras do formato:
+#   - todo bullet tem `id` único no currículo INTEIRO (experiências +
+#     projetos). É o id que amarra qualquer reescrita por IA à experiência
+#     real — é o que o guardrail anti-invenção verifica.
+#   - textos são bilíngues (pt/en): o idioma do currículo gerado segue o
+#     idioma da vaga.
+#   - `tags` são as skills que aquele bullet comprova; é por elas que a
+#     seleção ranqueia o que entra no currículo adaptado.
+
+dados:
+  nome: Alex Ferreira Duarte
+  contato:
+    email: alex.duarte@exemplo.com
+    telefone: "+55 61 90000-0000"
+    cidade: Brasília, DF
+  links:
+    github: https://github.com/exemplo-alex
+    linkedin: https://linkedin.com/in/exemplo-alex
+    portfolio: https://exemplo-alex.dev
+
+resumo:
+  pt: >-
+    Desenvolvedor de software com foco em Python e dados, com experiência em
+    pipelines de coleta, APIs e automação de processos.
+  en: >-
+    Software developer focused on Python and data, experienced in ingestion
+    pipelines, APIs and process automation.
+
+experiencias:
+  - cargo: Desenvolvedor Python
+    empresa: Constelação Tech
+    periodo: 2023 - atual
+    bullets:
+      - id: exp-constelacao-1
+        texto:
+          pt: Construí pipelines de ingestão em Python que consolidam dados de seis APIs públicas.
+          en: Built Python ingestion pipelines consolidating data from six public APIs.
+        tags: [Python, ETL, REST API]
+      - id: exp-constelacao-2
+        texto:
+          pt: Criei a suíte de testes automatizados do time, cobrindo o núcleo de regras de negócio.
+          en: Created the team's automated test suite, covering the core business rules.
+        tags: [Pytest, Testes Automatizados]
+      - id: exp-constelacao-3
+        texto:
+          pt: Automatizei o deploy com GitHub Actions, eliminando a publicação manual.
+          en: Automated deployment with GitHub Actions, removing manual releases.
+        tags: [GitHub Actions, CI/CD]
+
+  - cargo: Estagiário de Dados
+    empresa: Orvalho Sistemas
+    periodo: 2022 - 2023
+    bullets:
+      - id: exp-orvalho-1
+        texto:
+          pt: Modelei consultas SQL em PostgreSQL para relatórios operacionais recorrentes.
+          en: Modeled SQL queries on PostgreSQL for recurring operational reports.
+        tags: [SQL, PostgreSQL]
+      - id: exp-orvalho-2
+        texto:
+          pt: Automatizei planilhas manuais com Pandas, substituindo um processo semanal repetitivo.
+          en: Automated manual spreadsheets with Pandas, replacing a repetitive weekly process.
+        tags: [Python, Pandas]
+
+projetos:
+  - nome: Monitor de Vagas
+    descricao:
+      pt: Monitor que coleta vagas de várias fontes, filtra por perfil e notifica no Telegram.
+      en: Monitor that collects jobs from several sources, filters by profile and notifies on Telegram.
+    stack: [Python, SQLite, GitHub Actions]
+    link: https://github.com/exemplo-alex/monitor-vagas
+    bullets:
+      - id: proj-monitor-1
+        texto:
+          pt: Desenhei uma arquitetura de plugins em que adicionar uma fonte nova não altera o pipeline.
+          en: Designed a plugin architecture where adding a new source requires no pipeline changes.
+        tags: [Python, Testes Automatizados]
+      - id: proj-monitor-2
+        texto:
+          pt: Implementei deduplicação em SQLite com política de retenção configurável.
+          en: Implemented SQLite deduplication with a configurable retention policy.
+        tags: [SQLite, SQL]
+
+  - nome: Assistente de Estudos
+    descricao:
+      pt: Ferramenta de linha de comando que resume materiais de estudo usando um modelo de linguagem.
+      en: Command-line tool that summarizes study material using a language model.
+    stack: [Python, LLM]
+    link: https://github.com/exemplo-alex/assistente-estudos
+    bullets:
+      - id: proj-assistente-1
+        texto:
+          pt: Estruturei prompts reutilizáveis e validação da saída do modelo antes de exibir ao usuário.
+          en: Structured reusable prompts and validated model output before showing it to the user.
+        tags: [LLM, Prompt Engineering, Python]
+
+formacao:
+  - curso: Bacharelado em Ciência da Computação
+    instituicao: Universidade Exemplo de Brasília
+    status: em andamento
+
+skills:
+  - nome: Python
+    categoria: linguagem
+    nivel: avançado
+  - nome: SQL
+    categoria: linguagem
+    nivel: intermediário
+  - nome: PostgreSQL
+    categoria: banco
+    nivel: intermediário
+  - nome: Pandas
+    categoria: dados
+    nivel: intermediário
+  - nome: Pytest
+    categoria: ferramenta
+    nivel: intermediário
+  - nome: GitHub Actions
+    categoria: ferramenta
+    nivel: intermediário
+  - nome: LLM
+    categoria: dados
+    nivel: básico
+
+idiomas:
+  - nome: Português
+    nivel: nativo
+  - nome: Inglês
+    nivel: avançado
+
+certificacoes:
+  - nome: Fundamentos de Engenharia de Dados
+    emissor: Instituto Exemplo
+    ano: 2024

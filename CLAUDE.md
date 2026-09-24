@@ -17,7 +17,14 @@ uv sync --extra dev            # pytest/respx live in optional-dependencies, NOT
 uv run python -m monitor.main  # run the pipeline once: collect -> filter -> dedup -> notify
 uv run pytest                  # run the full test suite
 uv run pytest tests/test_filters.py::test_palavra_curta_nao_da_falso_positivo_em_substring  # single test
+
+# résumé adaptation (local only — needs curriculo_mestre.yaml, which is gitignored)
+uv run rolerush aderencia --vaga <id>        # score + gaps for a job already notified
+uv run rolerush curriculo --arquivo vaga.txt # generate the adapted .docx into saida/
+uv run rolerush curriculo --texto "..." --idioma en
 ```
+
+`rolerush` is the résumé CLI, not the monitor — the monitor stays on `python -m monitor.main`, which is what the workflow calls.
 
 **`uv sync` without `--extra dev` uninstalls pytest**, so both workflows use `uv sync --frozen --extra dev`; a plain `--frozen` makes `uv run pytest` fail with "program not found" and, in `monitor.yml`, that aborts the job before the monitor ever runs.
 

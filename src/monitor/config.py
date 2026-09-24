@@ -90,10 +90,20 @@ class NotificacaoConfig(BaseModel):
     telegram: bool = False
 
 
+class CurriculoConfig(BaseModel):
+    # dado pessoal: fica fora do git, então não existe no runner do Actions.
+    mestre: str = "curriculo_mestre.yaml"
+    skills: str = "config/skills.yaml"
+    # alternativa versionável pro Actions: só a lista de skills canônicas,
+    # sem nome, contato ou histórico. Vazio = sem pontuação lá.
+    skills_perfil: list[str] = Field(default_factory=list)
+
+
 class Config(BaseModel):
     filtros: FiltrosConfig = Field(default_factory=FiltrosConfig)
     fontes: FontesConfig = Field(default_factory=FontesConfig)
     notificacao: NotificacaoConfig = Field(default_factory=NotificacaoConfig)
+    curriculo: CurriculoConfig = Field(default_factory=CurriculoConfig)
     # None = mantém o histórico de dedup pra sempre (comportamento anterior).
     retencao_dias: int | None = None
 

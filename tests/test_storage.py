@@ -130,6 +130,96 @@ def test_reaparecer_atualiza_ultimo_visto_sem_mudar_a_data_de_primeiro_avistamen
     assert storage.ja_vista("antiga:1") is True
 
 
+def test_salvar_e_buscar_detalhes_da_vaga(tmp_path):
+    storage = Storage(tmp_path / "db.sqlite")
+    vaga = Vaga(
+        id="remotive:1",
+        titulo="Dev Python",
+        empresa="Acme",
+        url="https://exemplo.com/1",
+        fonte="remotive",
+        localizacao="Remoto",
+        descricao="Vaga de backend em Python.",
+    )
+
+    storage.salvar_detalhes([vaga])
+    recuperada = storage.buscar_detalhes("remotive:1")
+
+    assert recuperada is not None
+    assert recuperada.id == vaga.id
+    assert recuperada.titulo == vaga.titulo
+    assert recuperada.empresa == vaga.empresa
+    assert recuperada.url == vaga.url
+    assert recuperada.fonte == vaga.fonte
+    assert recuperada.localizacao == vaga.localizacao
+    assert recuperada.descricao == vaga.descricao
+
+
+def test_buscar_detalhes_de_vaga_desconhecida_devolve_none(tmp_path):
+    storage = Storage(tmp_path / "db.sqlite")
+
+    assert storage.buscar_detalhes("nao-existe:1") is None
+
+
+def test_salvar_detalhes_e_idempotente_e_atualiza_o_snapshot(tmp_path):
+    storage = Storage(tmp_path / "db.sqlite")
+    antes = Vaga(id="x:1", titulo="Título antigo", empresa="Acme", url="u", fonte="f")
+    depois = Vaga(id="x:1", titulo="Título novo", empresa="Acme", url="u", fonte="f")
+
+    storage.salvar_detalhes([antes])
+    storage.salvar_detalhes([depois])  # rodar de novo não pode duplicar nem quebrar
+
+    recuperada = storage.buscar_detalhes("x:1")
+    assert recuperada is not None
+    assert recuperada.titulo == "Título novo"
+
+
+def test_retencao_remove_tambem_os_detalhes_da_vaga_podada(tmp_path):
+    caminho = tmp_path / "db.sqlite"
+    storage = Storage(caminho)
+    agora = datetime.now(UTC)
+    _inserir_com_data(caminho, "antiga:1", visto_em=agora - timedelta(days=120))
+    storage.salvar_detalhes([Vaga(id="antiga:1", titulo="t", empresa="e", url="u", fonte="f")])
+
+    storage.remover_vistas_antigas(dias=90)
+
+    assert storage.ja_vista("antiga:1") is False
+    assert storage.buscar_detalhes("antiga:1") is None
+
+
+def test_retencao_mantem_detalhes_de_vaga_ainda_vista(tmp_path):
+    storage = Storage(tmp_path / "db.sqlite")
+    storage.marcar_como_vista("recente:1")
+    storage.salvar_detalhes([Vaga(id="recente:1", titulo="t", empresa="e", url="u", fonte="f")])
+
+    storage.remover_vistas_antigas(dias=90)
+
+    assert storage.buscar_detalhes("recente:1") is not None
+
+
+def test_migracao_para_tabela_de_detalhes_preserva_dados_existentes(tmp_path):
+    caminho = tmp_path / "db.sqlite"
+    # banco no formato antigo: só vagas_vistas, sem ultimo_visto e sem a
+    # tabela de detalhes — é o vagas.db que está em produção hoje.
+    with sqlite3.connect(caminho) as conn:
+        conn.execute(
+            """
+            CREATE TABLE vagas_vistas (
+                id TEXT PRIMARY KEY,
+                visto_em TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        conn.execute("INSERT INTO vagas_vistas (id) VALUES ('legado:1')")
+        conn.commit()
+
+    storage = Storage(caminho)
+
+    assert storage.ja_vista("legado:1") is True  # dedup antigo preservado
+    storage.salvar_detalhes([Vaga(id="legado:1", titulo="t", empresa="e", url="u", fonte="f")])
+    assert storage.buscar_detalhes("legado:1") is not None
+
+
 def test_migracao_adiciona_coluna_ultimo_visto_em_banco_existente(tmp_path):
     caminho = tmp_path / "db.sqlite"
     # simula um vagas.db no formato anterior a essa mudança, sem a coluna
