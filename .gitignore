@@ -21,5 +21,11 @@ venv/
 .coverage
 htmlcov/
 
+# dados pessoais: este repo é público. O currículo-mestre real e os
+# currículos gerados nunca entram no git — só o exemplo fictício
+# (curriculo_mestre.example.yaml) é versionado. Ver CURRICULO.md, premissa 4.
+curriculo_mestre.yaml
+saida/
+
 .vscode/
 .idea/
