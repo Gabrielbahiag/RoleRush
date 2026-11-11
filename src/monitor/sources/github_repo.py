@@ -35,7 +35,7 @@ class GithubRepoSource(Source):
             itens = resposta.json()
 
         # a API de issues do GitHub também retorna pull requests; descartar.
-        return [self._mapear(item) for item in itens if "pull_request" not in item]
+        return self._mapear_itens((item for item in itens if "pull_request" not in item), self._mapear)
 
     def _mapear(self, item: dict[str, Any]) -> Vaga:
         labels = [(label.get("name") or "") for label in item.get("labels") or []]

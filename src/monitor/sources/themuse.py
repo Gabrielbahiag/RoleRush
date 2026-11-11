@@ -54,7 +54,7 @@ class TheMuseSource(Source):
                 resposta.raise_for_status()
                 dados = resposta.json()
 
-                vagas.extend(self._mapear(item) for item in dados.get("results", []))
+                vagas.extend(self._mapear_itens(dados.get("results", []), self._mapear))
                 page_count = dados.get("page_count", 1)
                 pagina += 1
 

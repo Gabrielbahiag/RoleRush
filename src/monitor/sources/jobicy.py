@@ -25,7 +25,7 @@ class JobicySource(Source):
             resposta.raise_for_status()
             dados = resposta.json()
 
-        return [self._mapear(item) for item in dados.get("jobs", [])]
+        return self._mapear_itens(dados.get("jobs", []), self._mapear)
 
     def _mapear(self, item: dict[str, Any]) -> Vaga:
         return Vaga(

@@ -406,3 +406,36 @@ def test_ashby_source_mapeia_vagas_com_id_namespaced_por_empresa():
     assert vaga.id == "ashby:acme:xyz-789"
     assert vaga.empresa == "acme"
     assert vaga.remoto is True
+
+
+@respx.mock
+def test_item_malformado_e_descartado_sem_derrubar_a_fonte(caplog):
+    respx.get("https://remotive.com/api/remote-jobs").mock(
+        return_value=Response(
+            200,
+            json={"jobs": [{"title": "sem id"}, {"id": 1, "title": "Python Dev", "url": "https://r/1"}]},
+        )
+    )
+
+    vagas = RemotiveSource().fetch()
+
+    assert [vaga.id for vaga in vagas] == ["remotive:1"]
+    assert "item ignorado" in caplog.text
+
+
+@respx.mock
+def test_nenhum_item_reconhecido_vira_falha_da_fonte():
+    # formato da API mudou: melhor falhar (e avisar) que devolver zero calado.
+    respx.get("https://remotive.com/api/remote-jobs").mock(
+        return_value=Response(200, json={"jobs": [{"titulo": "a"}, {"titulo": "b"}]})
+    )
+
+    with pytest.raises(ValueError, match="formato da API mudou"):
+        RemotiveSource().fetch()
+
+
+@respx.mock
+def test_lista_vazia_continua_sendo_zero_vagas_e_nao_erro():
+    respx.get("https://remotive.com/api/remote-jobs").mock(return_value=Response(200, json={"jobs": []}))
+
+    assert RemotiveSource().fetch() == []

@@ -26,7 +26,7 @@ class RemoteOKSource(Source):
             itens = resposta.json()
 
         # o primeiro item é um aviso legal da API, não uma vaga.
-        return [self._mapear(item) for item in itens if "id" in item]
+        return self._mapear_itens((item for item in itens if isinstance(item, dict) and "id" in item), self._mapear)
 
     def _mapear(self, item: dict[str, Any]) -> Vaga:
         return Vaga(

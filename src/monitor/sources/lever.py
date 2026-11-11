@@ -26,7 +26,7 @@ class LeverSource(Source):
             resposta.raise_for_status()
             itens = resposta.json()
 
-        return [self._mapear(item) for item in itens]
+        return self._mapear_itens(itens, self._mapear)
 
     def _mapear(self, item: dict[str, Any]) -> Vaga:
         localizacao = (item.get("categories") or {}).get("location")

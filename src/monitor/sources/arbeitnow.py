@@ -25,7 +25,7 @@ class ArbeitnowSource(Source):
             resposta.raise_for_status()
             dados = resposta.json()
 
-        return [self._mapear(item) for item in dados.get("data", [])]
+        return self._mapear_itens(dados.get("data", []), self._mapear)
 
     def _mapear(self, item: dict[str, Any]) -> Vaga:
         return Vaga(

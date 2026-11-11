@@ -57,7 +57,7 @@ class AdzunaSource(Source):
             resposta.raise_for_status()
             dados = resposta.json()
 
-        return [self._mapear(item) for item in dados.get("results", [])]
+        return self._mapear_itens(dados.get("results", []), self._mapear)
 
     def _mapear(self, item: dict[str, Any]) -> Vaga:
         localizacao = (item.get("location") or {}).get("display_name")
