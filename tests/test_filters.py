@@ -1,5 +1,5 @@
 from monitor.config import FiltrosConfig
-from monitor.filters import aplicar_filtros, vaga_passa_filtro
+from monitor.filters import aplicar_filtros, impressao_digital, vaga_passa_filtro
 from monitor.models import Vaga
 
 
@@ -205,3 +205,24 @@ def test_config_real_aceita_as_vagas_que_antes_eram_descartadas():
         _vaga(titulo="Security Engineer (Remote - Denmark)", descricao="python", remoto=True, localizacao="Denmark"),
         filtros,
     )
+
+
+# --- impressão digital: mesma vaga em fontes/anúncios diferentes ---
+
+
+def test_impressao_digital_ignora_qualificador_de_regime_e_pais():
+    a = _vaga(titulo="Security Engineer (Remote - Denmark)", empresa="Acme")
+    b = _vaga(titulo="Security Engineer (Remote - Croatia)", empresa="ACME")
+    c = _vaga(titulo="[Remoto] Security Engineer", empresa="Acme")
+    assert impressao_digital(a) == impressao_digital(b) == impressao_digital(c) == "acme|security engineer"
+
+
+def test_impressao_digital_mantem_vagas_realmente_diferentes_separadas():
+    backend = _vaga(titulo="Software Engineer (Backend)", empresa="Acme")
+    frontend = _vaga(titulo="Software Engineer (Frontend)", empresa="Acme")
+    outra_empresa = _vaga(titulo="Software Engineer (Backend)", empresa="Globex")
+    assert len({impressao_digital(v) for v in (backend, frontend, outra_empresa)}) == 3
+
+
+def test_sem_empresa_nao_ha_impressao_digital():
+    assert impressao_digital(_vaga(titulo="Dev Python Pleno", empresa="")) is None

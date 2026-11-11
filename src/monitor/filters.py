@@ -14,6 +14,12 @@ from monitor.models import Vaga
 # Brasília — foi assim que as fontes brasileiras ficaram meses mudas.
 _SINAL_REMOTO = re.compile(r"(?<!\w)(?:remoto|remota|remote|home office|teletrabalho|anywhere)(?!\w)")
 _PONTUACAO_DE_LOCAL = " \t\n-–—,;/|()[]:."
+# "(Remote - Denmark)", "[Remoto]", "(Hybrid)": qualificador de regime/lugar
+# que distingue anúncios da MESMA vaga, não vagas diferentes. Só parênteses
+# com essas palavras saem — "(Backend)" e "(Frontend)" continuam distintos.
+_QUALIFICADOR_DE_REGIME = re.compile(
+    r"[(\[][^)\]]*(?:remot|hybrid|hibrid|presencial|on-?site|anywhere)[^)\]]*[)\]]"
+)
 
 
 def normalizar(texto: str) -> str:
@@ -49,6 +55,20 @@ def vaga_passa_filtro(vaga: Vaga, filtros: FiltrosConfig) -> bool:
 
 def aplicar_filtros(vagas: list[Vaga], filtros: FiltrosConfig) -> list[Vaga]:
     return [vaga for vaga in vagas if vaga_passa_filtro(vaga, filtros)]
+
+
+def impressao_digital(vaga: Vaga) -> str | None:
+    """Chave "mesma vaga" entre fontes e entre anúncios por país.
+
+    Empresa + título normalizado, sem o qualificador de regime. Sem empresa
+    (issues do GitHub) não há como distinguir "Dev Python Pleno" de duas
+    empresas diferentes, então não há impressão digital.
+    """
+    empresa = " ".join(re.findall(r"\w+", normalizar(vaga.empresa)))
+    titulo = " ".join(re.findall(r"\w+", _QUALIFICADOR_DE_REGIME.sub(" ", normalizar(vaga.titulo))))
+    if not empresa or not titulo:
+        return None
+    return f"{empresa}|{titulo}"
 
 
 def eh_remota(vaga: Vaga) -> bool:

@@ -296,3 +296,18 @@ def test_poda_com_remocao_encolhe_o_arquivo(tmp_path):
 
     assert storage.remover_vistas_antigas(90) == 80
     assert caminho.stat().st_size < tamanho_antes / 3
+
+
+def test_migracao_preenche_a_impressao_digital_de_detalhes_antigos(tmp_path):
+    caminho = tmp_path / "db.sqlite"
+    with sqlite3.connect(caminho) as conn:
+        conn.execute(
+            "CREATE TABLE vagas_detalhes (id TEXT PRIMARY KEY, titulo TEXT NOT NULL DEFAULT '', "
+            "empresa TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '', fonte TEXT NOT NULL DEFAULT '', "
+            "localizacao TEXT, descricao TEXT NOT NULL DEFAULT '', salvo_em TEXT NOT NULL DEFAULT (datetime('now')))"
+        )
+        conn.execute("INSERT INTO vagas_detalhes (id, titulo, empresa) VALUES ('a:1', 'Dev (Remote - US)', 'Acme')")
+
+    storage = Storage(caminho)
+
+    assert storage.digitais_notificadas({"acme|dev", "outra|coisa"}) == {"acme|dev"}

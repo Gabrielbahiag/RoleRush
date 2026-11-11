@@ -39,7 +39,9 @@ class _FonteFixa(Source):
 
 
 def _vaga(id_: str) -> Vaga:
-    return Vaga(id=id_, titulo="Dev Python", empresa="Acme", url=f"https://exemplo.com/{id_}", fonte="teste")
+    # título distinto por id: mesma empresa + mesmo título é tratado como a
+    # mesma vaga (impressão digital) e só notifica uma vez.
+    return Vaga(id=id_, titulo=f"Dev Python {id_}", empresa="Acme", url=f"https://exemplo.com/{id_}", fonte="teste")
 
 
 def test_coletar_vagas_isola_fonte_que_lanca_excecao_e_segue_as_demais(caplog):
@@ -462,3 +464,36 @@ def test_execucao_fica_registrada_por_fonte(tmp_path, monkeypatch):
     assert resumos["quebrada"].falhas == 1
     assert resumos["quebrada"].ultimo_erro == "RuntimeError: falha simulada"
     assert (resumos["teste"].coletadas, resumos["teste"].aprovadas, resumos["teste"].notificadas) == (1, 1, 1)
+
+
+@respx.mock
+def test_mesma_vaga_em_duas_fontes_ou_dois_paises_notifica_uma_vez(tmp_path, monkeypatch):
+    def vaga(id_, titulo, empresa="Acme"):
+        return Vaga(id=id_, titulo=titulo, empresa=empresa, url=f"https://x/{id_}", fonte="teste")
+
+    primeira = [vaga("jobicy:1", "Security Engineer (Remote - Denmark)"), vaga("jobicy:2", "Security Engineer (Remote - Spain)")]
+    _preparar(monkeypatch, _config(), primeira)
+    db_path = str(tmp_path / "vagas.db")
+    rota = respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    run(config_path="x", db_path=db_path)
+    assert rota.call_count == 1
+    assert Storage(db_path).ja_vista("jobicy:2")  # repetida: vista, não notificada
+
+    # outra fonte, dias depois, mesma vaga: não renotifica; vaga diferente sim.
+    segunda = [vaga("remotive:9", "Security Engineer"), vaga("remotive:10", "Data Engineer")]
+    monkeypatch.setattr("monitor.main.montar_fontes", lambda cfg: [_FonteFixa("teste", segunda)])
+    run(config_path="x", db_path=db_path)
+
+    assert rota.call_count == 2
+    assert "Data Engineer" in _textos(rota)[-1]
+
+
+@respx.mock
+def test_mesmo_id_duas_vezes_na_coleta_notifica_uma_vez(tmp_path, monkeypatch):
+    _preparar(monkeypatch, _config(), [_vaga("t:1"), _vaga("t:1")])
+    rota = respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    run(config_path="x", db_path=str(tmp_path / "vagas.db"))
+
+    assert rota.call_count == 1

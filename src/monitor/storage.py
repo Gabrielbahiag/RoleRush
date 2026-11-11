@@ -5,6 +5,7 @@ from contextlib import closing
 from pathlib import Path
 
 from monitor.curriculo.normalizacao import normalizar_texto
+from monitor.filters import impressao_digital
 from monitor.models import Vaga
 from monitor.saude import RegistroFonte, ResumoFonte
 
@@ -32,9 +33,10 @@ CREATE TABLE IF NOT EXISTS vagas_detalhes (
 """
 
 _UPSERT_DETALHES = """
-INSERT INTO vagas_detalhes (id, titulo, empresa, url, fonte, localizacao, descricao, salvo_em)
-VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+INSERT INTO vagas_detalhes (id, titulo, empresa, url, fonte, localizacao, descricao, digital, salvo_em)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
 ON CONFLICT(id) DO UPDATE SET
+    digital = excluded.digital,
     titulo = excluded.titulo,
     empresa = excluded.empresa,
     url = excluded.url,
@@ -106,8 +108,25 @@ class Storage:
             conn.execute(_SCHEMA_EXECUCOES)
             conn.execute(_SCHEMA_META)
             self._migrar_ultimo_visto(conn)
+            self._migrar_digital(conn)
             conn.commit()
             self._compactar_descricoes_antigas(conn)
+
+    def _migrar_digital(self, conn: sqlite3.Connection) -> None:
+        # coluna nova numa tabela que já existe: ALTER + preenchimento a
+        # partir do título/empresa já gravados.
+        colunas = {linha[1] for linha in conn.execute("PRAGMA table_info(vagas_detalhes)")}
+        if "digital" not in colunas:
+            conn.execute("ALTER TABLE vagas_detalhes ADD COLUMN digital TEXT")
+            linhas = conn.execute("SELECT id, titulo, empresa FROM vagas_detalhes").fetchall()
+            conn.executemany(
+                "UPDATE vagas_detalhes SET digital = ? WHERE id = ?",
+                [
+                    (impressao_digital(Vaga(id=id_, titulo=titulo, empresa=empresa, url="", fonte="")), id_)
+                    for id_, titulo, empresa in linhas
+                ],
+            )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_vagas_detalhes_digital ON vagas_detalhes (digital)")
 
     def _compactar_descricoes_antigas(self, conn: sqlite3.Connection) -> None:
         # uma vez só: bancos gravados antes da compactação guardavam o HTML
@@ -198,11 +217,24 @@ class Storage:
                         vaga.fonte,
                         vaga.localizacao,
                         compactar_descricao(vaga.descricao),
+                        impressao_digital(vaga),
                     )
                     for vaga in vagas
                 ],
             )
             conn.commit()
+
+    def digitais_notificadas(self, digitais: set[str]) -> set[str]:
+        """Quais destas impressões digitais já foram notificadas (dentro da retenção)."""
+        if not digitais:
+            return set()
+        with closing(self._conectar()) as conn:
+            conn.execute("CREATE TEMP TABLE consulta (digital TEXT PRIMARY KEY)")
+            conn.executemany("INSERT INTO consulta VALUES (?)", [(d,) for d in digitais])
+            linhas = conn.execute(
+                "SELECT DISTINCT d.digital FROM vagas_detalhes d JOIN consulta c ON c.digital = d.digital"
+            ).fetchall()
+        return {linha[0] for linha in linhas}
 
     def buscar_detalhes(self, vaga_id: str) -> Vaga | None:
         with closing(self._conectar()) as conn:

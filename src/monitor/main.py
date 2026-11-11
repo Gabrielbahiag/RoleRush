@@ -13,7 +13,7 @@ from monitor.config import Config, carregar_config
 from monitor.curriculo.extracao import extrair_requisitos
 from monitor.curriculo.perfil import fonte_de_aderencia
 from monitor.curriculo.score import Aderencia, calcular_aderencia
-from monitor.filters import aplicar_filtros
+from monitor.filters import aplicar_filtros, impressao_digital
 from monitor.models import Vaga
 from monitor.notifier import TelegramNotifier
 from monitor.saude import RegistroFonte, descrever_erro, formatar_alerta_falhas, formatar_resumo
@@ -175,7 +175,7 @@ def run(config_path: str = "config.yaml", db_path: str = "vagas.db", simular: bo
 
 def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar: bool) -> list[Vaga]:
     coletadas, falhas = coletar_vagas(fontes)
-    vagas = aplicar_filtros(coletadas, config.filtros)
+    vagas = _sem_ids_repetidos(aplicar_filtros(coletadas, config.filtros))
 
     storage = Storage(db_path)
     if config.retencao_dias:
@@ -198,6 +198,9 @@ def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar:
         )
 
     notificaveis = sorted(notificaveis, key=_instante_de_publicacao, reverse=True)
+    notificaveis, repetidas = _separar_repetidas(notificaveis, storage)
+    if repetidas:
+        logger.info("%d vaga(s) repetida(s) de outra fonte/anúncio, não notificada(s)", len(repetidas))
     lote = notificaveis[: config.notificacao.max_por_execucao]
     if len(lote) < len(notificaveis):
         logger.warning(
@@ -277,6 +280,36 @@ def _avisar_saude(notifier: TelegramNotifier, storage: Storage, falhas: dict[str
         if resumos:
             notifier.enviar_mensagem(formatar_resumo(resumos, _DIAS_DO_RESUMO))
         storage.marcar_meta_agora("ultimo_resumo")
+
+
+def _sem_ids_repetidos(vagas: list[Vaga]) -> list[Vaga]:
+    # a mesma vaga duas vezes na mesma coleta (paginação que andou durante a
+    # leitura, repo listado duas vezes) viraria duas notificações.
+    vistas: dict[str, Vaga] = {}
+    for vaga in vagas:
+        vistas.setdefault(vaga.id, vaga)
+    return list(vistas.values())
+
+
+def _separar_repetidas(notificaveis: list[Vaga], storage: Storage) -> tuple[list[Vaga], list[Vaga]]:
+    """Mesma empresa + mesmo título já notificado (ou repetido neste lote).
+
+    As repetidas não são notificadas mas, por não estarem pendentes, são
+    marcadas como vistas — senão voltariam a cada execução.
+    """
+    digitais = {vaga.id: impressao_digital(vaga) for vaga in notificaveis}
+    ja_notificadas = storage.digitais_notificadas({d for d in digitais.values() if d})
+    unicas: list[Vaga] = []
+    repetidas: list[Vaga] = []
+    for vaga in notificaveis:  # já em ordem de recência: fica a mais nova
+        digital = digitais[vaga.id]
+        if digital and digital in ja_notificadas:
+            repetidas.append(vaga)
+            continue
+        if digital:
+            ja_notificadas.add(digital)
+        unicas.append(vaga)
+    return unicas, repetidas
 
 
 def _notificar(
