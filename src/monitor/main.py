@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 from monitor.config import Config, carregar_config
@@ -15,6 +16,7 @@ from monitor.curriculo.score import Aderencia, calcular_aderencia
 from monitor.filters import aplicar_filtros
 from monitor.models import Vaga
 from monitor.notifier import TelegramNotifier
+from monitor.saude import RegistroFonte, descrever_erro, formatar_alerta_falhas, formatar_resumo
 from monitor.sources.adzuna import AdzunaSource
 from monitor.sources.arbeitnow import ArbeitnowSource
 from monitor.sources.ashby import AshbySource
@@ -98,17 +100,29 @@ def montar_fontes(config: Config) -> list[Source]:
     return fontes
 
 
-def coletar_vagas(fontes: list[Source]) -> list[Vaga]:
+def coletar_vagas(fontes: list[Source]) -> tuple[list[Vaga], dict[str, str]]:
+    """Vagas de todas as fontes + {fonte: erro} das que falharam.
+
+    Uma fonte quebrada não derruba as outras — e, justamente por isso, a
+    falha precisa ser devolvida para virar aviso; só logar a deixava
+    invisível num job que termina verde.
+    """
     vagas: list[Vaga] = []
+    falhas: dict[str, str] = {}
     for fonte in fontes:
         try:
             encontradas = fonte.fetch()
-        except Exception:
-            logger.exception("Falha ao buscar vagas em %s", fonte.nome)
+        except Exception as erro:
+            # sem traceback: a mensagem de erro do httpx traz a URL completa,
+            # com token/app_key. descrever_erro só expõe status e tipo.
+            falhas[fonte.nome] = descrever_erro(erro)
+            logger.error("Falha ao buscar vagas em %s: %s", fonte.nome, falhas[fonte.nome])
             continue
+        if not encontradas:
+            logger.warning("%s: nenhuma vaga devolvida", fonte.nome)
         logger.info("%s: %d vaga(s) encontrada(s)", fonte.nome, len(encontradas))
         vagas.extend(encontradas)
-    return vagas
+    return vagas, falhas
 
 
 def calcular_aderencias(vagas: list[Vaga], config: Config) -> dict[str, Aderencia]:
@@ -158,8 +172,8 @@ def run(config_path: str = "config.yaml", db_path: str = "vagas.db", simular: bo
 
 
 def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar: bool) -> list[Vaga]:
-    vagas = coletar_vagas(fontes)
-    vagas = aplicar_filtros(vagas, config.filtros)
+    coletadas, falhas = coletar_vagas(fontes)
+    vagas = aplicar_filtros(coletadas, config.filtros)
 
     storage = Storage(db_path)
     if config.retencao_dias:
@@ -197,13 +211,17 @@ def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar:
     pendentes = {vaga.id for vaga in notificaveis}
     storage.marcar_todas([vaga for vaga in vagas if vaga.id not in pendentes])
 
+    notificadas: Counter[str] = Counter()
+
     def entregue(vaga: Vaga) -> None:
         storage.salvar_detalhes([vaga])
         storage.marcar_todas([vaga])
+        notificadas[vaga.fonte] += 1
 
+    notifier = TelegramNotifier() if enviar and config.notificacao.telegram else None
     if lote:
-        if enviar and config.notificacao.telegram:
-            _notificar(lote, aderencias, entregue)
+        if notifier is not None:
+            _notificar(notifier, lote, aderencias, entregue)
         else:
             # Telegram desligado no config (ou simulação): imprimir é a entrega.
             for vaga in lote:
@@ -214,11 +232,54 @@ def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar:
         score = f" [{aderencia.score}%]" if aderencia else ""
         print(f"- [{vaga.fonte}]{score} {vaga.titulo} @ {vaga.empresa} — {vaga.url}")
 
+    if notifier is not None and notifier.configurado:
+        _avisar_saude(notifier, storage, falhas)
+
+    # depois dos avisos: se o envio de um deles falhar, a execução não fica
+    # registrada e o aviso é tentado de novo na próxima.
+    por_fonte_coletadas = Counter(vaga.fonte for vaga in coletadas)
+    por_fonte_aprovadas = Counter(vaga.fonte for vaga in vagas)
+    storage.registrar_execucao(
+        [
+            RegistroFonte(
+                fonte=fonte.nome,
+                coletadas=por_fonte_coletadas[fonte.nome],
+                aprovadas=por_fonte_aprovadas[fonte.nome],
+                notificadas=notificadas[fonte.nome],
+                erro=falhas.get(fonte.nome),
+            )
+            for fonte in fontes
+        ]
+    )
     return novas
 
 
-def _notificar(lote: list[Vaga], aderencias: dict[str, Aderencia], entregue) -> None:
-    notifier = TelegramNotifier()
+_DIAS_DO_RESUMO = 7
+
+
+def _avisar_saude(notifier: TelegramNotifier, storage: Storage, falhas: dict[str, str]) -> None:
+    # só a transição ok -> falha vira aviso; falha que persiste aparece no
+    # resumo semanal, em vez de repetir o alerta a cada 6 horas.
+    ja_falhavam = storage.falharam_na_execucao_anterior()
+    novas_falhas = {fonte: erro for fonte, erro in falhas.items() if fonte not in ja_falhavam}
+    if novas_falhas:
+        notifier.enviar_mensagem(formatar_alerta_falhas(novas_falhas))
+
+    dias = storage.dias_desde_meta("ultimo_resumo")
+    if dias is None:
+        # primeira execução com esta versão: começa a contar a semana agora,
+        # em vez de mandar um "resumo semanal" com uma execução só.
+        storage.marcar_meta_agora("ultimo_resumo")
+    elif dias >= _DIAS_DO_RESUMO:
+        resumos = storage.resumo_fontes(_DIAS_DO_RESUMO)
+        if resumos:
+            notifier.enviar_mensagem(formatar_resumo(resumos, _DIAS_DO_RESUMO))
+        storage.marcar_meta_agora("ultimo_resumo")
+
+
+def _notificar(
+    notifier: TelegramNotifier, lote: list[Vaga], aderencias: dict[str, Aderencia], entregue
+) -> None:
     if not notifier.configurado:
         if _em_ci():
             # no Actions, credencial ausente é erro de configuração: falhar

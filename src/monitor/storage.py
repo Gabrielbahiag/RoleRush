@@ -5,6 +5,7 @@ from contextlib import closing
 from pathlib import Path
 
 from monitor.models import Vaga
+from monitor.saude import RegistroFonte, ResumoFonte
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS vagas_vistas (
@@ -42,6 +43,27 @@ ON CONFLICT(id) DO UPDATE SET
     salvo_em = excluded.salvo_em
 """
 
+# uma linha por fonte por execução: alimenta o aviso de "fonte quebrou" e o
+# resumo semanal (monitor/saude.py). Poucas linhas, poda curta.
+_SCHEMA_EXECUCOES = """
+CREATE TABLE IF NOT EXISTS execucoes_fontes (
+    executado_em TEXT NOT NULL,
+    fonte TEXT NOT NULL,
+    coletadas INTEGER NOT NULL DEFAULT 0,
+    aprovadas INTEGER NOT NULL DEFAULT 0,
+    notificadas INTEGER NOT NULL DEFAULT 0,
+    erro TEXT
+);
+"""
+_DIAS_DE_HISTORICO_DE_EXECUCOES = 35
+
+_SCHEMA_META = """
+CREATE TABLE IF NOT EXISTS meta (
+    chave TEXT PRIMARY KEY,
+    valor TEXT NOT NULL
+);
+"""
+
 # upsert: numa vaga nova, visto_em e ultimo_visto nascem iguais (via DEFAULT
 # da coluna); numa vaga que reaparece, só ultimo_visto avança — visto_em
 # (primeiro avistamento) nunca muda depois de gravado.
@@ -69,6 +91,8 @@ class Storage:
             # tabela nova: o CREATE ... IF NOT EXISTS já é a migração segura,
             # não mexe em nada do que o banco antigo tem.
             conn.execute(_SCHEMA_DETALHES)
+            conn.execute(_SCHEMA_EXECUCOES)
+            conn.execute(_SCHEMA_META)
             self._migrar_ultimo_visto(conn)
             conn.commit()
 
@@ -163,3 +187,68 @@ class Storage:
             localizacao=linha[5],
             descricao=linha[6],
         )
+
+    def registrar_execucao(self, registros: list[RegistroFonte]) -> None:
+        with closing(self._conectar()) as conn:
+            agora = conn.execute("SELECT datetime('now')").fetchone()[0]
+            conn.executemany(
+                "INSERT INTO execucoes_fontes "
+                "(executado_em, fonte, coletadas, aprovadas, notificadas, erro) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (agora, r.fonte, r.coletadas, r.aprovadas, r.notificadas, r.erro)
+                    for r in registros
+                ],
+            )
+            conn.execute(
+                "DELETE FROM execucoes_fontes WHERE executado_em < datetime('now', ?)",
+                (f"-{_DIAS_DE_HISTORICO_DE_EXECUCOES} days",),
+            )
+            conn.commit()
+
+    def falharam_na_execucao_anterior(self) -> set[str]:
+        """Fontes cuja última execução registrada terminou em erro."""
+        with closing(self._conectar()) as conn:
+            # rowid, não executado_em: duas execuções no mesmo segundo
+            # empatariam no timestamp.
+            linhas = conn.execute(
+                """
+                SELECT fonte FROM execucoes_fontes
+                WHERE rowid IN (SELECT MAX(rowid) FROM execucoes_fontes GROUP BY fonte)
+                  AND erro IS NOT NULL
+                """
+            ).fetchall()
+        return {linha[0] for linha in linhas}
+
+    def resumo_fontes(self, dias: int) -> list[ResumoFonte]:
+        with closing(self._conectar()) as conn:
+            linhas = conn.execute(
+                """
+                SELECT fonte, COUNT(*), COUNT(erro), SUM(coletadas), SUM(aprovadas), SUM(notificadas),
+                       (SELECT erro FROM execucoes_fontes i
+                         WHERE i.fonte = e.fonte AND i.erro IS NOT NULL
+                         ORDER BY rowid DESC LIMIT 1)
+                FROM execucoes_fontes e
+                WHERE executado_em >= datetime('now', ?)
+                GROUP BY fonte
+                """,
+                (f"-{dias} days",),
+            ).fetchall()
+        return [ResumoFonte(*linha) for linha in linhas]
+
+    def dias_desde_meta(self, chave: str) -> float | None:
+        """Dias desde a data UTC gravada em `chave` (None se nunca gravada)."""
+        with closing(self._conectar()) as conn:
+            linha = conn.execute(
+                "SELECT julianday('now') - julianday(valor) FROM meta WHERE chave = ?", (chave,)
+            ).fetchone()
+        return linha[0] if linha else None
+
+    def marcar_meta_agora(self, chave: str) -> None:
+        with closing(self._conectar()) as conn:
+            conn.execute(
+                "INSERT INTO meta (chave, valor) VALUES (?, datetime('now')) "
+                "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor",
+                (chave,),
+            )
+            conn.commit()

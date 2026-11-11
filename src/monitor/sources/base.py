@@ -12,6 +12,8 @@ class Source(ABC):
     sem precisar tocar em nada do resto do pipeline (filtros, dedup, notifier).
     """
 
+    # toda `Vaga` devolvida por esta fonte leva `fonte=self.nome`: é por esse
+    # campo que o resumo de saúde conta aprovadas/notificadas por fonte.
     nome: str
 
     @abstractmethod

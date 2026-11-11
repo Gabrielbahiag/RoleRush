@@ -47,10 +47,32 @@ def test_coletar_vagas_isola_fonte_que_lanca_excecao_e_segue_as_demais(caplog):
     fontes = [_FonteQuebrada(), _FonteFixa("ok", [vaga_ok])]
 
     with caplog.at_level(logging.ERROR, logger="monitor"):
-        vagas = coletar_vagas(fontes)
+        vagas, falhas = coletar_vagas(fontes)
 
     assert vagas == [vaga_ok]
+    assert falhas == {"quebrada": "RuntimeError: falha simulada"}
     assert "quebrada" in caplog.text
+
+
+class _FonteHttp(Source):
+    nome = "adzuna"
+
+    def fetch(self) -> list[Vaga]:
+        import httpx
+
+        requisicao = httpx.Request("GET", "https://api.adzuna.com/v1/api/jobs/br/search/1?app_key=SEGREDO")
+        resposta = httpx.Response(401, request=requisicao)
+        resposta.raise_for_status()
+        return []
+
+
+def test_coletar_vagas_nao_vaza_a_url_da_fonte_no_log(caplog):
+    # a mensagem do HTTPStatusError traz a URL completa, com app_key/token.
+    with caplog.at_level(logging.DEBUG):
+        _, falhas = coletar_vagas([_FonteHttp()])
+
+    assert falhas == {"adzuna": "HTTP 401"}
+    assert "SEGREDO" not in caplog.text
 
 
 @respx.mock
@@ -358,3 +380,85 @@ def test_simular_sem_banco_existente_nao_cria_arquivo(tmp_path, monkeypatch):
     run(config_path="x", db_path=str(db_path), simular=True)
 
     assert not db_path.exists()
+
+
+class _FonteAlternavel(Source):
+    nome = "instavel"
+
+    def __init__(self) -> None:
+        self.quebrada = True
+
+    def fetch(self) -> list[Vaga]:
+        if self.quebrada:
+            raise RuntimeError("fora do ar")
+        return []
+
+
+@respx.mock
+def test_fonte_que_quebra_gera_um_aviso_so_na_transicao(tmp_path, monkeypatch):
+    instavel = _FonteAlternavel()
+    _preparar(monkeypatch, _config(), [])
+    monkeypatch.setattr("monitor.main.montar_fontes", lambda cfg: [instavel, _FonteFixa("ok", [])])
+    db_path = str(tmp_path / "vagas.db")
+    rota = respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    def avisos() -> int:
+        return sum("com falha" in texto for texto in _textos(rota))
+
+    run(config_path="x", db_path=db_path)
+    assert avisos() == 1
+    assert "instavel" in _textos(rota)[0]
+
+    run(config_path="x", db_path=db_path)  # continua quebrada: sem novo aviso
+    assert avisos() == 1
+
+    instavel.quebrada = False
+    run(config_path="x", db_path=db_path)  # voltou
+    instavel.quebrada = True
+    run(config_path="x", db_path=db_path)  # quebrou de novo: avisa
+    assert avisos() == 2
+
+
+@respx.mock
+def test_resumo_semanal_sai_uma_vez_por_semana(tmp_path, monkeypatch):
+    import sqlite3
+
+    _preparar(monkeypatch, _config(), [_vaga("t:1")])
+    db_path = str(tmp_path / "vagas.db")
+    rota = respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    def resumos() -> list[str]:
+        return [texto for texto in _textos(rota) if "Resumo" in texto]
+
+    run(config_path="x", db_path=db_path)
+    assert resumos() == []  # primeira execução só começa a contar a semana
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE meta SET valor = datetime('now', '-8 days') WHERE chave = 'ultimo_resumo'")
+    run(config_path="x", db_path=db_path)
+
+    # o resumo cobre as execuções anteriores (a atual entra no próximo).
+    assert len(resumos()) == 1
+    assert "teste: 1 → 1 → 1" in resumos()[0]
+
+    run(config_path="x", db_path=db_path)
+    assert len(resumos()) == 1
+
+
+def test_execucao_fica_registrada_por_fonte(tmp_path, monkeypatch):
+    config = Config(
+        notificacao=NotificacaoConfig(telegram=False),
+        curriculo=SEM_CURRICULO,
+    )
+    _preparar(monkeypatch, config, [], credenciais=False)
+    monkeypatch.setattr(
+        "monitor.main.montar_fontes", lambda cfg: [_FonteQuebrada(), _FonteFixa("teste", [_vaga("t:1")])]
+    )
+    db_path = str(tmp_path / "vagas.db")
+
+    run(config_path="x", db_path=db_path)
+
+    resumos = {r.fonte: r for r in Storage(db_path).resumo_fontes(7)}
+    assert resumos["quebrada"].falhas == 1
+    assert resumos["quebrada"].ultimo_erro == "RuntimeError: falha simulada"
+    assert (resumos["teste"].coletadas, resumos["teste"].aprovadas, resumos["teste"].notificadas) == (1, 1, 1)
