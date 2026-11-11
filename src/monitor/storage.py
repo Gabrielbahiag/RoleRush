@@ -4,6 +4,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from monitor.curriculo.normalizacao import normalizar_texto
 from monitor.models import Vaga
 from monitor.saude import RegistroFonte, ResumoFonte
 
@@ -73,6 +74,17 @@ ON CONFLICT(id) DO UPDATE SET ultimo_visto = excluded.ultimo_visto
 """
 
 
+# O vagas.db é commitado a cada execução, e o git guarda cada versão: HTML
+# cru das descrições chegou a 17,6 MB de 20 MB. Texto puro e cortado basta
+# pra extração de requisitos do `rolerush curriculo --vaga`.
+MAX_CARACTERES_DESCRICAO = 8000
+_META_DESCRICOES_COMPACTADAS = "descricoes_compactadas"
+
+
+def compactar_descricao(descricao: str) -> str:
+    return normalizar_texto(descricao)[:MAX_CARACTERES_DESCRICAO]
+
+
 class Storage:
     """Persistência de dedup em SQLite: já vi essa vaga antes?
 
@@ -95,6 +107,25 @@ class Storage:
             conn.execute(_SCHEMA_META)
             self._migrar_ultimo_visto(conn)
             conn.commit()
+            self._compactar_descricoes_antigas(conn)
+
+    def _compactar_descricoes_antigas(self, conn: sqlite3.Connection) -> None:
+        # uma vez só: bancos gravados antes da compactação guardavam o HTML
+        # inteiro. VACUUM devolve o espaço — DELETE/UPDATE sozinhos nunca
+        # encolhem o arquivo do SQLite.
+        if conn.execute("SELECT 1 FROM meta WHERE chave = ?", (_META_DESCRICOES_COMPACTADAS,)).fetchone():
+            return
+        linhas = conn.execute("SELECT id, descricao FROM vagas_detalhes").fetchall()
+        conn.executemany(
+            "UPDATE vagas_detalhes SET descricao = ? WHERE id = ?",
+            [(compactar_descricao(descricao), id_) for id_, descricao in linhas],
+        )
+        conn.execute(
+            "INSERT INTO meta (chave, valor) VALUES (?, datetime('now'))", (_META_DESCRICOES_COMPACTADAS,)
+        )
+        conn.commit()
+        if linhas:
+            conn.execute("VACUUM")
 
     def _conectar(self) -> sqlite3.Connection:
         return sqlite3.connect(self.caminho)
@@ -146,7 +177,12 @@ class Storage:
             # correspondente é lixo.
             conn.execute("DELETE FROM vagas_detalhes WHERE id NOT IN (SELECT id FROM vagas_vistas)")
             conn.commit()
-            return cursor.rowcount
+            removidas = cursor.rowcount
+            if removidas:
+                # sem VACUUM o arquivo nunca encolhe: as páginas liberadas
+                # ficam reservadas e o vagas.db commitado só cresce.
+                conn.execute("VACUUM")
+            return removidas
 
     def salvar_detalhes(self, vagas: list[Vaga]) -> None:
         """Guarda o snapshot das vagas notificadas (idempotente)."""
@@ -161,7 +197,7 @@ class Storage:
                         vaga.url,
                         vaga.fonte,
                         vaga.localizacao,
-                        vaga.descricao,
+                        compactar_descricao(vaga.descricao),
                     )
                     for vaga in vagas
                 ],

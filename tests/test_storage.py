@@ -248,3 +248,51 @@ def test_migracao_adiciona_coluna_ultimo_visto_em_banco_existente(tmp_path):
     removidas = storage.remover_vistas_antigas(dias=90)
     assert removidas == 0
     assert storage.ja_vista("legado:1") is True
+
+
+_HTML_GRANDE = "<div><p>Requisitos:</p><ul>" + "<li>Python &amp; SQL</li>" * 2000 + "</ul></div>"
+
+
+def test_detalhes_guardam_texto_puro_e_cortado(tmp_path):
+    storage = Storage(tmp_path / "db.sqlite")
+    vaga = Vaga(id="1", titulo="t", empresa="e", url="u", fonte="f", descricao=_HTML_GRANDE)
+
+    storage.salvar_detalhes([vaga])
+
+    descricao = storage.buscar_detalhes("1").descricao
+    assert "<li>" not in descricao and "&amp;" not in descricao
+    assert descricao.startswith("Requisitos:")
+    assert "Python & SQL" in descricao
+    assert len(descricao) <= 8000
+
+
+def test_banco_antigo_tem_as_descricoes_compactadas_uma_vez_e_encolhe(tmp_path):
+    caminho = tmp_path / "db.sqlite"
+    Storage(caminho)
+    with sqlite3.connect(caminho) as conn:
+        # simula um banco de antes da compactação: HTML cru, sem a marca na meta.
+        conn.executemany(
+            "INSERT INTO vagas_detalhes (id, descricao) VALUES (?, ?)",
+            [(str(i), _HTML_GRANDE) for i in range(50)],
+        )
+        conn.execute("DELETE FROM meta")
+    tamanho_antes = caminho.stat().st_size
+
+    storage = Storage(caminho)
+
+    assert caminho.stat().st_size < tamanho_antes / 3
+    assert "<li>" not in storage.buscar_detalhes("7").descricao
+
+
+def test_poda_com_remocao_encolhe_o_arquivo(tmp_path):
+    caminho = tmp_path / "db.sqlite"
+    storage = Storage(caminho)
+    antigas = [Vaga(id=str(i), titulo="t", empresa="e", url="u", fonte="f", descricao="x " * 3000) for i in range(80)]
+    storage.marcar_todas(antigas)
+    storage.salvar_detalhes(antigas)
+    with sqlite3.connect(caminho) as conn:
+        conn.execute("UPDATE vagas_vistas SET ultimo_visto = datetime('now', '-200 days')")
+    tamanho_antes = caminho.stat().st_size
+
+    assert storage.remover_vistas_antigas(90) == 80
+    assert caminho.stat().st_size < tamanho_antes / 3
