@@ -2,21 +2,37 @@ name: Monitor de vagas
 
 on:
   schedule:
-    - cron: "0 */6 * * *" # a cada 6 horas
+    # minuto 17, não a hora cheia: o GitHub atrasa (e às vezes descarta)
+    # execuções agendadas no :00, que é quando todo mundo agenda.
+    - cron: "17 */6 * * *"
   workflow_dispatch: {} # permite rodar manualmente pela aba Actions
 
 permissions:
   contents: write # necessário para commitar o vagas.db atualizado
 
+# nunca duas execuções gravando o mesmo vagas.db: a segunda espera a primeira
+# terminar (cancelar perderia as vagas que ela já notificou).
+concurrency:
+  group: monitor-vagas
+  cancel-in-progress: false
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    # o normal é 1-3 min; uma rajada grande no Telegram (até 150 mensagens
+    # com pausa de 1,1s) cabe com folga. O padrão do GitHub seria 6 horas.
+    timeout-minutes: 30
     steps:
+      # actions fixadas por SHA (tag pode ser movida); o Dependabot
+      # (.github/dependabot.yml) propõe as atualizações.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Instalar dependências
         # --extra dev: pytest e respx estão em optional-dependencies, que o
@@ -37,9 +53,21 @@ jobs:
         run: uv run python -m monitor.main
 
       - name: Commitar banco de vagas vistas
+        # !cancelled(): roda mesmo se o monitor falhou no meio. Cada vaga é
+        # marcada como vista logo depois de entregue; sem gravar esse
+        # progresso parcial, a próxima execução reenviaria tudo de novo.
+        if: ${{ !cancelled() }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add vagas.db
-          git diff --cached --quiet || git commit -m "chore: atualiza banco de vagas vistas"
-          git push
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "chore: atualiza banco de vagas vistas"
+          # um push seu durante a execução faria o push do bot ser rejeitado
+          # e o estado desta execução se perder (= renotificação na próxima).
+          for tentativa in 1 2 3; do
+            git pull --rebase --quiet && git push && exit 0
+            sleep $((tentativa * 5))
+          done
+          echo "::error::não foi possível publicar o vagas.db"
+          exit 1

@@ -4,15 +4,24 @@ on:
   push:
   pull_request:
 
+# só lê o repositório; o token padrão pode ter escrita dependendo da config
+# do repo, e este workflow não precisa disso.
+permissions:
+  contents: read
+
 jobs:
   testes:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Instalar uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Instalar dependências
         # --extra dev: pytest e respx estão em optional-dependencies, que o
