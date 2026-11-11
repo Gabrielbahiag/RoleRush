@@ -128,7 +128,18 @@ def coletar_vagas(fontes: list[Source]) -> tuple[list[Vaga], dict[str, str]]:
 
 
 def calcular_aderencias(vagas: list[Vaga], config: Config) -> dict[str, Aderencia]:
-    fonte = fonte_de_aderencia(config)
+    try:
+        fonte = fonte_de_aderencia(config)
+    except Exception as erro:
+        # a pontuação é opcional: um currículo-mestre ou skills.yaml inválido
+        # desliga o score, nunca a notificação. Só o tipo do erro vai pro log
+        # — a mensagem do pydantic ecoa trechos do currículo (dado pessoal).
+        logger.error(
+            "Aderência desligada: falha ao carregar currículo/skills (%s). "
+            "Rode `uv run rolerush aderencia --texto x` para ver o erro completo.",
+            type(erro).__name__,
+        )
+        return {}
     if fonte is None:
         logger.info("Aderência desligada: sem currículo-mestre nem skills_perfil no config")
         return {}

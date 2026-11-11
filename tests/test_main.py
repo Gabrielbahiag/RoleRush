@@ -509,3 +509,25 @@ def test_no_actions_o_log_nao_lista_as_vagas(tmp_path, monkeypatch, capsys):
     run(config_path="x", db_path=str(tmp_path / "vagas.db"))
 
     assert "exemplo.com/t:1" not in capsys.readouterr().out
+
+
+@respx.mock
+def test_curriculo_mestre_invalido_desliga_a_aderencia_sem_derrubar_a_notificacao(tmp_path, monkeypatch, caplog):
+    # achado ao rodar --simular de verdade: um bullet sem `texto` no mestre
+    # local derrubava o monitor inteiro por causa de uma feature opcional.
+    mestre = tmp_path / "mestre.yaml"
+    mestre.write_text("experiencias:\n  - bullets:\n      - id: sem-texto\n", encoding="utf-8")
+    config = Config(
+        notificacao=NotificacaoConfig(telegram=True),
+        curriculo=CurriculoConfig(mestre=str(mestre), skills=SKILLS),
+        aderencia_minima=90,
+    )
+    _preparar(monkeypatch, config, [_vaga("t:1")])
+    rota = respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    with caplog.at_level(logging.ERROR):
+        run(config_path="x", db_path=str(tmp_path / "vagas.db"))
+
+    assert rota.call_count == 1  # notificou, e sem corte por aderência
+    assert "Aderência desligada" in caplog.text
+    assert "sem-texto" not in caplog.text
