@@ -1,11 +1,13 @@
+import json
 import logging
 from pathlib import Path
 
+import pytest
 import respx
 from httpx import Response
 
 from monitor.config import Config, CurriculoConfig, NotificacaoConfig
-from monitor.main import coletar_vagas, run
+from monitor.main import coletar_vagas, main, run
 from monitor.models import Vaga
 from monitor.sources.base import Source
 from monitor.storage import Storage
@@ -228,3 +230,131 @@ def test_run_atualiza_ultimo_visto_de_vaga_que_reaparece_e_a_retencao_nao_a_poda
         conn.execute("UPDATE vagas_vistas SET ultimo_visto = datetime('now', '-20 days')")
     run(config_path="ignorado.yaml", db_path=str(db_path))
     assert rota.call_count == 1
+
+
+URL_API = "https://api.telegram.org/bottoken-teste/sendMessage"
+
+
+def _datada(id_: str, dia: int) -> Vaga:
+    from datetime import datetime, timezone
+
+    vaga = _vaga(id_)
+    vaga.publicada_em = datetime(2026, 11, dia, tzinfo=timezone.utc)
+    return vaga
+
+
+def _config(**notificacao) -> Config:
+    return Config(notificacao=NotificacaoConfig(telegram=True, **notificacao), curriculo=SEM_CURRICULO)
+
+
+def _preparar(monkeypatch, config, vagas, credenciais=True):
+    if credenciais:
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token-teste")
+        monkeypatch.setenv("TELEGRAM_CHAT_ID", "123")
+    monkeypatch.setattr("monitor.main.carregar_config", lambda caminho: config)
+    monkeypatch.setattr("monitor.main.montar_fontes", lambda cfg: [_FonteFixa("teste", vagas)])
+
+
+def _textos(rota) -> list[str]:
+    return [json.loads(chamada.request.content)["text"] for chamada in rota.calls]
+
+
+@respx.mock
+def test_falha_no_meio_do_envio_grava_o_que_chegou_e_o_resto_vem_na_proxima(tmp_path, monkeypatch):
+    vagas = [_datada("t:1", 3), _datada("t:2", 2), _datada("t:3", 1)]
+    _preparar(monkeypatch, _config(), vagas)
+    db_path = str(tmp_path / "vagas.db")
+    ok = Response(200, json={"ok": True})
+    rota = respx.post(URL_API).mock(
+        side_effect=[ok, ok, Response(401, json={"ok": False, "description": "Unauthorized"})]
+    )
+
+    with pytest.raises(Exception):
+        run(config_path="x", db_path=db_path)
+
+    storage = Storage(db_path)
+    assert storage.ja_vista("t:1") and storage.ja_vista("t:2")
+    assert not storage.ja_vista("t:3")
+    assert storage.buscar_detalhes("t:1") is not None
+
+    rota.side_effect = None
+    rota.return_value = ok
+    run(config_path="x", db_path=db_path)
+
+    # 3ª chamada = a tentativa recusada; a 2ª execução reenvia só a t:3.
+    assert rota.call_count == 4
+    assert "t:3" in _textos(rota)[3]
+    assert Storage(db_path).ja_vista("t:3")
+
+
+def test_sem_credenciais_localmente_imprime_e_nao_marca_nada(tmp_path, monkeypatch, capsys):
+    _preparar(monkeypatch, _config(), [_vaga("t:1")], credenciais=False)
+    db_path = str(tmp_path / "vagas.db")
+
+    run(config_path="x", db_path=db_path)
+
+    assert "exemplo.com/t:1" in capsys.readouterr().out
+    assert not Storage(db_path).ja_vista("t:1")
+
+
+def test_sem_credenciais_no_actions_falha_sem_marcar_nada(tmp_path, monkeypatch):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    _preparar(monkeypatch, _config(), [_vaga("t:1")], credenciais=False)
+    db_path = str(tmp_path / "vagas.db")
+
+    with pytest.raises(RuntimeError, match="TELEGRAM_BOT_TOKEN"):
+        run(config_path="x", db_path=db_path)
+
+    assert not Storage(db_path).ja_vista("t:1")
+
+
+def test_telegram_desligado_no_config_marca_como_vista(tmp_path, monkeypatch):
+    config = Config(notificacao=NotificacaoConfig(telegram=False), curriculo=SEM_CURRICULO)
+    _preparar(monkeypatch, config, [_vaga("t:1")], credenciais=False)
+    db_path = str(tmp_path / "vagas.db")
+
+    run(config_path="x", db_path=db_path)
+
+    assert Storage(db_path).ja_vista("t:1")
+
+
+@respx.mock
+def test_teto_por_execucao_envia_as_mais_recentes_e_deixa_o_resto_pra_depois(tmp_path, monkeypatch):
+    vagas = [_datada("t:antiga", 1), _datada("t:nova", 9), _vaga("t:sem-data"), _datada("t:media", 5)]
+    _preparar(monkeypatch, _config(max_por_execucao=2), vagas)
+    db_path = str(tmp_path / "vagas.db")
+    rota = respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    run(config_path="x", db_path=db_path)
+
+    primeiros = _textos(rota)
+    assert "t:nova" in primeiros[0] and "t:media" in primeiros[1]
+    assert not Storage(db_path).ja_vista("t:antiga")
+
+    run(config_path="x", db_path=db_path)
+    assert rota.call_count == 4
+    assert Storage(db_path).ja_vista("t:sem-data")
+
+
+@respx.mock
+def test_simular_nao_envia_nem_grava(tmp_path, monkeypatch, capsys):
+    _preparar(monkeypatch, _config(), [_vaga("t:1")])
+    db_path = tmp_path / "vagas.db"
+    Storage(str(db_path)).marcar_todas([_vaga("t:velha")])
+    antes = db_path.read_bytes()
+    rota = respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    main(["--simular", "--db", str(db_path), "--config", "x"])
+
+    assert rota.call_count == 0
+    assert db_path.read_bytes() == antes
+    assert "exemplo.com/t:1" in capsys.readouterr().out
+
+
+def test_simular_sem_banco_existente_nao_cria_arquivo(tmp_path, monkeypatch):
+    _preparar(monkeypatch, _config(), [_vaga("t:1")])
+    db_path = tmp_path / "vagas.db"
+
+    run(config_path="x", db_path=str(db_path), simular=True)
+
+    assert not db_path.exists()

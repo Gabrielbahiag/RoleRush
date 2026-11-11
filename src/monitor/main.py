@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import logging
+import os
+import shutil
 import sys
+import tempfile
+from pathlib import Path
 
 from monitor.config import Config, carregar_config
 from monitor.curriculo.extracao import extrair_requisitos
@@ -129,13 +134,30 @@ def _passa_aderencia(vaga: Vaga, aderencias: dict[str, Aderencia], minima: int |
     return aderencia is None or aderencia.score >= minima
 
 
-def run(config_path: str = "config.yaml", db_path: str = "vagas.db", enviar: bool = True) -> list[Vaga]:
+def run(config_path: str = "config.yaml", db_path: str = "vagas.db", simular: bool = False) -> list[Vaga]:
+    """Uma execução completa: coleta -> filtro -> dedup -> notificação.
+
+    `simular=True` roda tudo contra uma cópia descartável do banco e não
+    envia nada: dá pra testar filtro e fontes localmente sem mexer no
+    vagas.db versionado nem no Telegram.
+    """
     config = carregar_config(config_path)
     fontes = montar_fontes(config)
     if not fontes:
         logger.warning("Nenhuma fonte ativa em %s", config_path)
         return []
 
+    if not simular:
+        return _executar(config, fontes, db_path, enviar=True)
+
+    with tempfile.TemporaryDirectory() as temporario:
+        copia = Path(temporario) / "vagas.db"
+        if Path(db_path).exists():
+            shutil.copyfile(db_path, copia)
+        return _executar(config, fontes, copia, enviar=False)
+
+
+def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar: bool) -> list[Vaga]:
     vagas = coletar_vagas(fontes)
     vagas = aplicar_filtros(vagas, config.filtros)
 
@@ -159,29 +181,87 @@ def run(config_path: str = "config.yaml", db_path: str = "vagas.db", enviar: boo
             config.aderencia_minima,
         )
 
-    if notificaveis and enviar and config.notificacao.telegram:
-        notifier = TelegramNotifier()
-        if notifier.configurado:
-            notifier.notificar_vagas(notificaveis, aderencias)
-        else:
-            logger.warning("Notificação Telegram habilitada, mas token/chat_id ausentes")
+    notificaveis = sorted(notificaveis, key=_instante_de_publicacao, reverse=True)
+    lote = notificaveis[: config.notificacao.max_por_execucao]
+    if len(lote) < len(notificaveis):
+        logger.warning(
+            "%d vaga(s) acima do teto de %d por execução ficam para a próxima",
+            len(notificaveis) - len(lote),
+            config.notificacao.max_por_execucao,
+        )
 
-    for vaga in notificaveis:
+    # Só é marcada como vista, aqui, a vaga que não está esperando entrega:
+    # as já vistas que reapareceram (avança o ultimo_visto, que é o que a
+    # retenção olha) e as novas barradas pela aderência (senão voltariam a
+    # cada execução). As notificáveis só são marcadas depois de entregues.
+    pendentes = {vaga.id for vaga in notificaveis}
+    storage.marcar_todas([vaga for vaga in vagas if vaga.id not in pendentes])
+
+    def entregue(vaga: Vaga) -> None:
+        storage.salvar_detalhes([vaga])
+        storage.marcar_todas([vaga])
+
+    if lote:
+        if enviar and config.notificacao.telegram:
+            _notificar(lote, aderencias, entregue)
+        else:
+            # Telegram desligado no config (ou simulação): imprimir é a entrega.
+            for vaga in lote:
+                entregue(vaga)
+
+    for vaga in lote:
         aderencia = aderencias.get(vaga.id)
         score = f" [{aderencia.score}%]" if aderencia else ""
         print(f"- [{vaga.fonte}]{score} {vaga.titulo} @ {vaga.empresa} — {vaga.url}")
 
-    # snapshot só do que foi notificado; o dedup vale pra toda vaga nova,
-    # inclusive a barrada pela aderência (senão ela volta a cada execução).
-    storage.salvar_detalhes(notificaveis)
-    # `vagas`, não `novas`: a já vista que reapareceu precisa ter o
-    # ultimo_visto atualizado, senão a retenção a poda e ela é renotificada.
-    storage.marcar_todas(vagas)
     return novas
 
 
-def main() -> int:
-    run()
+def _notificar(lote: list[Vaga], aderencias: dict[str, Aderencia], entregue) -> None:
+    notifier = TelegramNotifier()
+    if not notifier.configurado:
+        if _em_ci():
+            # no Actions, credencial ausente é erro de configuração: falhar
+            # alto é o que dispara o e-mail de falha do GitHub. Seguir em
+            # frente marcaria tudo como visto sem nada ter chegado.
+            raise RuntimeError(
+                "Telegram habilitado, mas TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID estão vazios. "
+                "Nenhuma vaga foi marcada como vista."
+            )
+        logger.warning("Telegram sem credenciais: só imprimindo, sem marcar as vagas como vistas")
+        return
+    notifier.notificar_vagas(lote, aderencias, ao_enviar=entregue)
+
+
+def _em_ci() -> bool:
+    return os.environ.get("GITHUB_ACTIONS") == "true"
+
+
+def _instante_de_publicacao(vaga: Vaga) -> float:
+    # mais recente primeiro; sem data vai pro fim. timestamp() resolve a
+    # mistura de datas com e sem fuso que as fontes devolvem.
+    if vaga.publicada_em is None:
+        return float("-inf")
+    try:
+        return vaga.publicada_em.timestamp()
+    except (OverflowError, OSError, ValueError):
+        return float("-inf")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m monitor.main",
+        description="Coleta vagas, filtra pelo perfil, deduplica e notifica no Telegram.",
+    )
+    parser.add_argument("--config", default="config.yaml")
+    parser.add_argument("--db", default="vagas.db")
+    parser.add_argument(
+        "--simular",
+        action="store_true",
+        help="coleta e filtra de verdade, mas não envia nada nem grava no banco",
+    )
+    args = parser.parse_args(argv)
+    run(config_path=args.config, db_path=args.db, simular=args.simular)
     return 0
 
 

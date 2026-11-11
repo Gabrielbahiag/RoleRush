@@ -93,6 +93,10 @@ class FontesConfig(BaseModel):
 
 class NotificacaoConfig(BaseModel):
     telegram: bool = False
+    # teto de envios por execução: uma rajada (vagas.db zerado, fonte nova,
+    # filtro afrouxado) escoa ao longo de várias execuções em vez de bater no
+    # limite do Telegram. O excedente não é marcado como visto: vem depois.
+    max_por_execucao: int = Field(default=150, ge=1)
 
 
 class CurriculoConfig(BaseModel):

@@ -7,7 +7,7 @@ from httpx import Response
 
 from monitor.curriculo.score import Aderencia
 from monitor.models import Vaga
-from monitor.notifier import TelegramNotifier, _formatar_vaga
+from monitor.notifier import ErroTelegram, TelegramNotifier, _formatar_vaga
 
 
 def _vaga(**overrides) -> Vaga:
@@ -135,13 +135,18 @@ def test_enviar_mensagem_manda_payload_correto_pra_api_do_telegram():
 
 
 @respx.mock
-def test_enviar_mensagem_propaga_erro_http_do_telegram():
+def test_enviar_mensagem_propaga_erro_http_do_telegram_sem_vazar_o_token():
     respx.post("https://api.telegram.org/bottoken-teste/sendMessage").mock(
         return_value=Response(400, json={"ok": False, "description": "Bad Request"})
     )
 
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(ErroTelegram) as erro:
         TelegramNotifier(token="token-teste", chat_id="123").enviar_mensagem("Olá")
+
+    assert erro.value.status == 400
+    assert "Bad Request" in str(erro.value)
+    # a URL da API contém o token: o erro (que vai pro log) não pode citá-la.
+    assert "token-teste" not in str(erro.value)
 
 
 @respx.mock
@@ -154,3 +159,117 @@ def test_notificar_vagas_envia_uma_mensagem_por_vaga():
     notifier.notificar_vagas([_vaga(id="a:1"), _vaga(id="a:2")])
 
     assert rota.call_count == 2
+
+
+URL_API = "https://api.telegram.org/bottoken-teste/sendMessage"
+OK = Response(200, json={"ok": True})
+
+
+def _notifier() -> TelegramNotifier:
+    return TelegramNotifier(token="token-teste", chat_id="123")
+
+
+@pytest.fixture
+def pausas(monkeypatch):
+    registradas: list[float] = []
+    monkeypatch.setattr("monitor.notifier._dormir", registradas.append)
+    return registradas
+
+
+def test_formatar_vaga_escapa_a_url():
+    texto = _formatar_vaga(_vaga(url="https://x.com/vaga?a=1&b=<2>"))
+
+    assert "https://x.com/vaga?a=1&amp;b=&lt;2&gt;" in texto
+
+
+@respx.mock
+def test_429_espera_o_retry_after_e_tenta_de_novo(pausas):
+    limite = Response(429, json={"ok": False, "description": "Too Many Requests", "parameters": {"retry_after": 7}})
+    rota = respx.post(URL_API).mock(side_effect=[limite, OK])
+
+    _notifier().enviar_mensagem("Olá")
+
+    assert rota.call_count == 2
+    assert pausas == [8]
+
+
+@respx.mock
+def test_erro_5xx_persistente_esgota_as_tentativas_e_propaga(pausas):
+    rota = respx.post(URL_API).mock(return_value=Response(502, json={"ok": False, "description": "Bad Gateway"}))
+
+    with pytest.raises(ErroTelegram) as erro:
+        _notifier().enviar_mensagem("Olá")
+
+    assert erro.value.status == 502
+    assert rota.call_count == 4
+    assert pausas == [2, 4, 8]
+
+
+@respx.mock
+def test_falha_de_rede_e_retentada_e_o_erro_nao_cita_a_url():
+    rota = respx.post(URL_API).mock(
+        side_effect=[httpx.ConnectTimeout("timeout em https://api.telegram.org/bottoken-teste"), OK]
+    )
+    _notifier().enviar_mensagem("Olá")
+    assert rota.call_count == 2
+
+    respx.post(URL_API).mock(side_effect=httpx.ConnectError("falhou em https://api.telegram.org/bottoken-teste"))
+    with pytest.raises(ErroTelegram) as erro:
+        _notifier().enviar_mensagem("Olá")
+    assert "token-teste" not in str(erro.value)
+
+
+@respx.mock
+def test_401_nao_e_retentado():
+    rota = respx.post(URL_API).mock(return_value=Response(401, json={"ok": False, "description": "Unauthorized"}))
+
+    with pytest.raises(ErroTelegram):
+        _notifier().enviar_mensagem("Olá")
+
+    assert rota.call_count == 1
+
+
+@respx.mock
+def test_mensagem_rejeitada_com_400_e_reenviada_sem_formatacao():
+    # sem isso, uma vaga cujo texto o Telegram recusa trava a fila pra sempre.
+    recusa = Response(400, json={"ok": False, "description": "can not parse entities"})
+    rota = respx.post(URL_API).mock(side_effect=[recusa, OK])
+    entregues = []
+
+    _notifier().notificar_vagas([_vaga(id="a:1")], ao_enviar=entregues.append)
+
+    segunda = json.loads(rota.calls[1].request.content)
+    assert "parse_mode" not in segunda
+    assert "Dev Python" in segunda["text"]
+    assert [vaga.id for vaga in entregues] == ["a:1"]
+
+
+@respx.mock
+def test_falha_no_meio_para_o_envio_e_so_as_entregues_sao_reportadas():
+    respx.post(URL_API).mock(side_effect=[OK, Response(401, json={"ok": False, "description": "Unauthorized"})])
+    entregues = []
+
+    with pytest.raises(ErroTelegram):
+        _notifier().notificar_vagas(
+            [_vaga(id="a:1"), _vaga(id="a:2"), _vaga(id="a:3")], ao_enviar=entregues.append
+        )
+
+    assert [vaga.id for vaga in entregues] == ["a:1"]
+
+
+@respx.mock
+def test_pausa_entre_mensagens_respeita_o_limite_do_chat(pausas):
+    respx.post(URL_API).mock(return_value=OK)
+
+    _notifier().notificar_vagas([_vaga(id="a:1"), _vaga(id="a:2"), _vaga(id="a:3")])
+
+    assert pausas == [1.1, 1.1]
+
+
+@respx.mock
+def test_texto_acima_do_limite_do_telegram_e_cortado():
+    rota = respx.post(URL_API).mock(return_value=OK)
+
+    _notifier().enviar_mensagem("x" * 5000)
+
+    assert len(json.loads(rota.calls.last.request.content)["text"]) == 4096
