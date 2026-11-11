@@ -232,10 +232,15 @@ def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar:
             for vaga in lote:
                 entregue(vaga)
 
-    for vaga in lote:
-        aderencia = aderencias.get(vaga.id)
-        score = f" [{aderencia.score}%]" if aderencia else ""
-        print(f"- [{vaga.fonte}]{score} {vaga.titulo} @ {vaga.empresa} — {vaga.url}")
+    if _em_ci():
+        # o log do Actions de um repo público é público: a lista de vagas
+        # (que revela a busca de emprego) fica só no Telegram.
+        logger.info("%d vaga(s) processada(s) neste lote", len(lote))
+    else:
+        for vaga in lote:
+            aderencia = aderencias.get(vaga.id)
+            score = f" [{aderencia.score}%]" if aderencia else ""
+            print(f"- [{vaga.fonte}]{score} {vaga.titulo} @ {vaga.empresa} — {vaga.url}")
 
     if notifier is not None and notifier.configurado:
         _avisar_saude(notifier, storage, falhas)

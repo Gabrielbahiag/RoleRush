@@ -497,3 +497,15 @@ def test_mesmo_id_duas_vezes_na_coleta_notifica_uma_vez(tmp_path, monkeypatch):
     run(config_path="x", db_path=str(tmp_path / "vagas.db"))
 
     assert rota.call_count == 1
+
+
+@respx.mock
+def test_no_actions_o_log_nao_lista_as_vagas(tmp_path, monkeypatch, capsys):
+    # log de Actions em repo público é público: título/URL ficam só no Telegram.
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    _preparar(monkeypatch, _config(), [_vaga("t:1")])
+    respx.post(URL_API).mock(return_value=Response(200, json={"ok": True}))
+
+    run(config_path="x", db_path=str(tmp_path / "vagas.db"))
+
+    assert "exemplo.com/t:1" not in capsys.readouterr().out
