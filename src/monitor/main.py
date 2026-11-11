@@ -174,7 +174,9 @@ def run(config_path: str = "config.yaml", db_path: str = "vagas.db", enviar: boo
     # snapshot só do que foi notificado; o dedup vale pra toda vaga nova,
     # inclusive a barrada pela aderência (senão ela volta a cada execução).
     storage.salvar_detalhes(notificaveis)
-    storage.marcar_todas(novas)
+    # `vagas`, não `novas`: a já vista que reapareceu precisa ter o
+    # ultimo_visto atualizado, senão a retenção a poda e ela é renotificada.
+    storage.marcar_todas(vagas)
     return novas
 
 

@@ -193,3 +193,38 @@ def test_run_inclui_o_score_na_mensagem_quando_ha_curriculo(tmp_path, monkeypatc
     texto = json.loads(rota.calls.last.request.content)["text"]
     assert "100" in texto
     assert "x:1" in texto
+
+
+@respx.mock
+def test_run_atualiza_ultimo_visto_de_vaga_que_reaparece_e_a_retencao_nao_a_poda(tmp_path, monkeypatch):
+    # regressão: run() só marcava as novas, então ultimo_visto nunca avançava
+    # e uma vaga aberta há mais de `retencao_dias` era podada e renotificada.
+    import sqlite3
+
+    vaga = _vaga("teste:1")
+    config = Config(notificacao=NotificacaoConfig(telegram=True), curriculo=SEM_CURRICULO, retencao_dias=90)
+    _, rota, _ = _rodar(monkeypatch, tmp_path, config, [vaga])
+    assert rota.call_count == 1
+
+    db_path = tmp_path / "vagas.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE vagas_vistas SET visto_em = datetime('now', '-80 days'), "
+            "ultimo_visto = datetime('now', '-80 days')"
+        )
+
+    # reaparece hoje: ultimo_visto precisa voltar pra agora...
+    run(config_path="ignorado.yaml", db_path=str(db_path))
+    with sqlite3.connect(db_path) as conn:
+        visto_em, ultimo = conn.execute(
+            "SELECT julianday('now') - julianday(visto_em), julianday('now') - julianday(ultimo_visto) "
+            "FROM vagas_vistas"
+        ).fetchone()
+    assert visto_em > 79
+    assert ultimo < 1
+
+    # ...e 20 dias depois (100 desde o primeiro avistamento) não é renotificada.
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE vagas_vistas SET ultimo_visto = datetime('now', '-20 days')")
+    run(config_path="ignorado.yaml", db_path=str(db_path))
+    assert rota.call_count == 1
