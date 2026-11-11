@@ -49,9 +49,10 @@ class HimalayasSource(Source):
             url=item.get("applicationLink") or item.get("guid", ""),
             fonte=self.nome,
             localizacao=localizacao,
-            # a API não expõe um booleano confiável de remoto; algumas vagas
-            # de "locationRestrictions" exigem presença em escritório.
-            remoto=None,
+            # o Himalayas só lista vagas remotas; locationRestrictions diz onde
+            # a pessoa pode morar, e é isso que o filtro `remoto_aceito` avalia.
+            # Com None, toda vaga daqui caía na regra de presencial e sumia.
+            remoto=True,
             publicada_em=_parse_epoch(item.get("pubDate")),
             descricao=item.get("description") or item.get("excerpt", ""),
         )

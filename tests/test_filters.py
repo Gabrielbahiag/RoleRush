@@ -93,3 +93,115 @@ def test_localizacao_rejeita_presencial_fora_da_regiao():
     filtros = FiltrosConfig(localizacao=["brasília", "df"])
     vaga = _vaga(remoto=False, localizacao="São Paulo - SP")
     assert not vaga_passa_filtro(vaga, filtros)
+
+
+# --- normalização: acento, HTML e variações de palavra ---
+
+
+def test_palavra_chave_ignora_acento_nos_dois_sentidos():
+    filtros = FiltrosConfig(palavras_chave=["inteligência artificial"])
+    vaga = _vaga(titulo="Analista de Inteligencia Artificial", descricao="")
+    assert vaga_passa_filtro(vaga, filtros)
+
+
+def test_palavra_chave_casa_dentro_de_html_com_entidades():
+    # Remotive/Jobicy mandam HTML cru; o Greenhouse manda escapado duas vezes.
+    filtros = FiltrosConfig(palavras_chave=["inteligencia artificial"])
+    cru = _vaga(titulo="Analista", descricao="<p>Intelig&ecirc;ncia Artificial</p>")
+    escapado = _vaga(titulo="Analista", descricao="&lt;p&gt;Intelig&amp;ecirc;ncia Artificial&lt;/p&gt;")
+    assert vaga_passa_filtro(cru, filtros)
+    assert vaga_passa_filtro(escapado, filtros)
+
+
+def test_asterisco_casa_variacoes_da_palavra():
+    filtros = FiltrosConfig(palavras_chave=["desenvolvedor*", "software engineer*"])
+    assert vaga_passa_filtro(_vaga(titulo="Desenvolvedora Back-end", descricao=""), filtros)
+    assert vaga_passa_filtro(_vaga(titulo="Vaga para desenvolvedores", descricao=""), filtros)
+    assert vaga_passa_filtro(_vaga(titulo="Software Engineering Lead", descricao=""), filtros)
+
+
+def test_sem_asterisco_continua_exigindo_a_palavra_inteira():
+    filtros = FiltrosConfig(palavras_chave=["desenvolvedor"])
+    assert not vaga_passa_filtro(_vaga(titulo="Desenvolvedora Back-end", descricao=""), filtros)
+
+
+def test_termo_terminado_em_simbolo_casa():
+    filtros = FiltrosConfig(palavras_chave=["c++"])
+    assert vaga_passa_filtro(_vaga(titulo="Dev C++ embarcado", descricao=""), filtros)
+
+
+# --- remoto inferido: fontes que não informam o regime ---
+
+
+def test_remoto_desconhecido_com_remoto_no_titulo_passa_pelo_filtro_de_local():
+    # o caso dos repositórios de vagas do GitHub: remoto=None, sem citar Brasília.
+    filtros = FiltrosConfig(palavras_chave=["python"], localizacao=["brasilia"])
+    vaga = _vaga(titulo="[Remoto] Desenvolvedor Python Pleno", descricao="stack Django", remoto=None, localizacao=None)
+    assert vaga_passa_filtro(vaga, filtros)
+
+
+def test_remoto_desconhecido_sem_sinal_de_remoto_ainda_exige_a_regiao():
+    filtros = FiltrosConfig(localizacao=["brasilia"])
+    vaga = _vaga(titulo="Dev Python", descricao="presencial em Recife", remoto=None, localizacao=None)
+    assert not vaga_passa_filtro(vaga, filtros)
+
+
+def test_remoto_false_explicito_nao_e_sobrescrito_pelo_titulo():
+    filtros = FiltrosConfig(localizacao=["brasilia"])
+    vaga = _vaga(titulo="Ex-remoto, agora presencial", descricao="", remoto=False, localizacao="Recife")
+    assert not vaga_passa_filtro(vaga, filtros)
+
+
+# --- remoto com restrição de país ---
+
+_REMOTO_ACEITO = ["brasil", "brazil", "latam", "worldwide", "anywhere"]
+
+
+def test_remota_restrita_a_outro_pais_e_rejeitada():
+    filtros = FiltrosConfig(localizacao=["brasilia"], remoto_aceito=_REMOTO_ACEITO)
+    vaga = _vaga(remoto=True, localizacao="USA")
+    assert not vaga_passa_filtro(vaga, filtros)
+
+
+def test_remota_aceita_quando_a_restricao_inclui_o_brasil():
+    filtros = FiltrosConfig(localizacao=["brasilia"], remoto_aceito=_REMOTO_ACEITO)
+    assert vaga_passa_filtro(_vaga(remoto=True, localizacao="Argentina,  Brazil"), filtros)
+    assert vaga_passa_filtro(_vaga(remoto=True, localizacao="APAC, EMEA, LATAM, USA"), filtros)
+
+
+def test_remota_sem_restricao_declarada_passa():
+    filtros = FiltrosConfig(localizacao=["brasilia"], remoto_aceito=_REMOTO_ACEITO)
+    assert vaga_passa_filtro(_vaga(remoto=True, localizacao=None), filtros)
+    assert vaga_passa_filtro(_vaga(remoto=True, localizacao="Remoto"), filtros)
+    assert vaga_passa_filtro(_vaga(remoto=True, localizacao="Remote - "), filtros)
+
+
+def test_remota_restrita_a_regiao_configurada_passa():
+    filtros = FiltrosConfig(localizacao=["brasilia"], remoto_aceito=_REMOTO_ACEITO)
+    assert vaga_passa_filtro(_vaga(remoto=True, localizacao="Remoto - Brasília"), filtros)
+
+
+def test_remota_restrita_sem_remoto_aceito_configurado_passa_como_antes():
+    filtros = FiltrosConfig(localizacao=["brasilia"])
+    assert vaga_passa_filtro(_vaga(remoto=True, localizacao="USA"), filtros)
+
+
+def test_config_real_aceita_as_vagas_que_antes_eram_descartadas():
+    # regressão da auditoria: com o config.yaml versionado, vagas típicas dos
+    # repositórios brasileiros precisam passar.
+    from pathlib import Path
+
+    from monitor.config import carregar_config
+
+    filtros = carregar_config(Path(__file__).resolve().parents[1] / "config.yaml").filtros
+    casos = [
+        _vaga(titulo="[Remoto] Desenvolvedor Python Pleno", descricao="Django", remoto=None, localizacao=None),
+        _vaga(titulo="Desenvolvedora Back-end", descricao="Node e Go", remoto=True, localizacao=None),
+        _vaga(titulo="Engenheiro de Software Pleno", descricao="Java", remoto=True, localizacao="Brazil"),
+    ]
+    for vaga in casos:
+        assert vaga_passa_filtro(vaga, filtros), vaga.titulo
+    assert not vaga_passa_filtro(
+        _vaga(titulo="Security Engineer (Remote - Denmark)", descricao="python", remoto=True, localizacao="Denmark"),
+        filtros,
+    )

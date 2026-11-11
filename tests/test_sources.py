@@ -77,6 +77,30 @@ def test_github_repo_source_ignora_pull_requests():
     assert len(vagas) == 1
     assert vagas[0].id == "github:backend-br/vagas:1"
     assert vagas[0].titulo == "[Acme] Backend Jr"
+    assert vagas[0].remoto is None  # sem label de regime: o filtro olha o título
+
+
+@respx.mock
+def test_github_repo_source_le_o_regime_pelas_labels():
+    def issue(numero, *labels):
+        return {
+            "number": numero,
+            "title": "Dev Python",
+            "html_url": f"https://github.com/backend-br/vagas/issues/{numero}",
+            "body": "",
+            "labels": [{"name": nome} for nome in labels],
+        }
+
+    respx.get("https://api.github.com/repos/backend-br/vagas/issues").mock(
+        return_value=Response(
+            200,
+            json=[issue(1, "Remoto", "CLT"), issue(2, "Presencial"), issue(3, "Híbrido"), issue(4, "Pleno")],
+        )
+    )
+
+    vagas = GithubRepoSource(repo="backend-br/vagas").fetch()
+
+    assert [vaga.remoto for vaga in vagas] == [True, False, False, None]
 
 
 @respx.mock
@@ -209,7 +233,7 @@ def test_himalayas_source_mapeia_vagas():
     assert vaga.id == "himalayas:https://himalayas.app/companies/ci-t/jobs/python-dev"
     assert vaga.empresa == "CI&T"
     assert vaga.localizacao == "Brazil"
-    assert vaga.remoto is None
+    assert vaga.remoto is True  # board só de remotas; o país é a restrição
 
 
 @respx.mock

@@ -1,24 +1,40 @@
+# Todos os termos são comparados sem acento, sem maiúsculas e sem HTML
+# ("brasilia" casa "Brasília"). Termo terminado em * casa qualquer
+# continuação: "desenvolvedor*" pega desenvolvedora e desenvolvedores.
 filtros:
   palavras_chave: # bate no título + descrição; passa se achar QUALQUER um
     - python
     - machine learning
-    - inteligência artificial
+    - inteligencia artificial
     - llm
     - prompt engineering
     - engenharia de prompt
     - engenharia de software
-    - software engineer
-    - desenvolvedor
+    - engenheiro de software
+    - engenheira de software
+    - software engineer* # engineer, engineers, engineering
+    - desenvolvedor* # desenvolvedora, desenvolvedores
   excluir: [] # descarta se aparecer (ex: "senior" caso volte a filtrar por nível)
   senioridade: [] # vazio = qualquer nível (júnior, pleno, sênior)
   remoto: null # não exige remoto: o filtro de localização já libera remotas
-  localizacao: # vaga remota passa sempre; presencial/híbrida só se bater aqui
-    - brasília
+  localizacao: # presencial/híbrida só passa se bater aqui
     - brasilia
     - df
     - distrito federal
-    - Taguatinga
-    - Aguas Claras
+    - taguatinga
+    - aguas claras
+  # remota com restrição de país ("USA", "Remote - Germany") só passa se a
+  # restrição bater aqui (ou em `localizacao`); remota sem restrição passa.
+  remoto_aceito:
+    - brasil
+    - brazil
+    - latam
+    - latin america
+    - south america
+    - americas
+    - worldwide
+    - anywhere
+    - global
 
 fontes:
   remotive:

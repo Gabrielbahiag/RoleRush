@@ -38,15 +38,28 @@ class GithubRepoSource(Source):
         return [self._mapear(item) for item in itens if "pull_request" not in item]
 
     def _mapear(self, item: dict[str, Any]) -> Vaga:
+        labels = [(label.get("name") or "") for label in item.get("labels") or []]
         return Vaga(
             id=f"github:{self.repo}:{item['number']}",
             titulo=item.get("title", ""),
             empresa="",
             url=item.get("html_url", ""),
             fonte=self.nome,
+            remoto=_remoto_pelas_labels(labels),
             publicada_em=_parse_data(item.get("created_at")),
             descricao=item.get("body") or "",
         )
+
+
+def _remoto_pelas_labels(labels: list[str]) -> bool | None:
+    # backend-br e afins classificam o regime por label ("Remoto",
+    # "Presencial", "Híbrido"). Sem label, None: o filtro olha o título.
+    nomes = " ".join(labels).lower()
+    if "remot" in nomes:
+        return True
+    if any(termo in nomes for termo in ("presencial", "híbrido", "hibrido", "hybrid")):
+        return False
+    return None
 
 
 def _parse_data(valor: str | None) -> datetime | None:

@@ -1,13 +1,33 @@
 from __future__ import annotations
 
 import re
+import unicodedata
+from functools import lru_cache
 
 from monitor.config import FiltrosConfig
+from monitor.curriculo.normalizacao import normalizar_texto
 from monitor.models import Vaga
+
+# Os repositórios de vagas do GitHub (e boa parte da Adzuna) não têm campo de
+# remoto: quem diz é o título, "[Remoto] Dev Python". Sem olhar o título,
+# essas vagas caíam na regra de presencial e eram descartadas por não citarem
+# Brasília — foi assim que as fontes brasileiras ficaram meses mudas.
+_SINAL_REMOTO = re.compile(r"(?<!\w)(?:remoto|remota|remote|home office|teletrabalho|anywhere)(?!\w)")
+_PONTUACAO_DE_LOCAL = " \t\n-–—,;/|()[]:."
+
+
+def normalizar(texto: str) -> str:
+    """Texto comparável: sem HTML/Markdown, sem acento e em minúsculas.
+
+    Sem isso "inteligencia" não casa com "inteligência", e o HTML cru que
+    Remotive/Jobicy mandam ("Intelig&ecirc;ncia") não casa com nenhum dos dois.
+    """
+    decomposto = unicodedata.normalize("NFKD", normalizar_texto(texto))
+    return "".join(c for c in decomposto if not unicodedata.combining(c)).lower()
 
 
 def vaga_passa_filtro(vaga: Vaga, filtros: FiltrosConfig) -> bool:
-    texto = vaga.texto_busca()
+    texto = normalizar(f"{vaga.titulo}\n{vaga.descricao}")
 
     if filtros.remoto is True and vaga.remoto is False:
         return False
@@ -21,7 +41,7 @@ def vaga_passa_filtro(vaga: Vaga, filtros: FiltrosConfig) -> bool:
     if filtros.senioridade and not _contem_alguma(texto, filtros.senioridade):
         return False
 
-    if filtros.localizacao and not _bate_localizacao(vaga, filtros.localizacao):
+    if filtros.localizacao and not _bate_localizacao(vaga, texto, filtros):
         return False
 
     return True
@@ -31,14 +51,43 @@ def aplicar_filtros(vagas: list[Vaga], filtros: FiltrosConfig) -> list[Vaga]:
     return [vaga for vaga in vagas if vaga_passa_filtro(vaga, filtros)]
 
 
-def _bate_localizacao(vaga: Vaga, termos: list[str]) -> bool:
-    # remota serve pra qualquer localização; presencial/híbrida só se bater
-    # com um dos termos configurados (ex: "brasília").
-    if vaga.remoto is True:
+def eh_remota(vaga: Vaga) -> bool:
+    """O que a fonte disser; se ela não souber, o título decide."""
+    if vaga.remoto is not None:
+        return vaga.remoto
+    return bool(_SINAL_REMOTO.search(normalizar(vaga.titulo)))
+
+
+def _bate_localizacao(vaga: Vaga, texto: str, filtros: FiltrosConfig) -> bool:
+    local = normalizar(vaga.localizacao or "")
+    if eh_remota(vaga):
+        return _remota_aceita(local, filtros)
+    # presencial/híbrida só serve se for na região configurada.
+    return _contem_alguma(f"{texto}\n{local}", filtros.localizacao)
+
+
+def _remota_aceita(local: str, filtros: FiltrosConfig) -> bool:
+    # "Remote", "Remoto - Anywhere" ou vazio: não há restrição declarada.
+    restricao = _SINAL_REMOTO.sub(" ", local).strip(_PONTUACAO_DE_LOCAL)
+    if not restricao or not filtros.remoto_aceito:
         return True
-    texto = f"{vaga.texto_busca()}\n{(vaga.localizacao or '').lower()}"
-    return _contem_alguma(texto, termos)
+    # "remoto só nos EUA" não serve; "remoto, mas morando no DF" serve.
+    return _contem_alguma(local, filtros.remoto_aceito) or _contem_alguma(local, filtros.localizacao)
 
 
 def _contem_alguma(texto: str, termos: list[str]) -> bool:
-    return any(re.search(rf"\b{re.escape(termo.lower())}\b", texto) for termo in termos)
+    return any(_padrao(termo).search(texto) for termo in termos)
+
+
+@lru_cache(maxsize=512)
+def _padrao(termo: str) -> re.Pattern[str]:
+    # `termo*` casa qualquer continuação: "desenvolvedor*" pega desenvolvedora
+    # e desenvolvedores. O `*` sai antes de normalizar, que o trataria como
+    # ênfase de Markdown.
+    termo = termo.strip()
+    prefixo = termo.endswith("*")
+    base = normalizar(termo.rstrip("*"))
+    continuacao = r"\w*" if prefixo else ""
+    # (?<!\w)…(?!\w) em vez de \b: um termo que termina em símbolo ("c++")
+    # nunca casaria com um \b depois dele. Mesma lição do extracao.py.
+    return re.compile(rf"(?<!\w){re.escape(base)}{continuacao}(?!\w)")

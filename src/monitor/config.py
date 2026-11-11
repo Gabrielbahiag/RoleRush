@@ -15,6 +15,10 @@ class FiltrosConfig(BaseModel):
     # vagas remotas passam sempre; presenciais/híbridas só passam se baterem
     # com um desses termos (ex: "brasília", "df"). Vazio = não filtra por local.
     localizacao: list[str] = Field(default_factory=list)
+    # vaga remota com restrição geográfica ("USA", "Remote - Germany") só passa
+    # se a restrição bater com um desses termos (ou com `localizacao`).
+    # Remota sem restrição declarada passa sempre. Vazio = toda remota passa.
+    remoto_aceito: list[str] = Field(default_factory=list)
 
 
 class RemotiveConfig(BaseModel):
