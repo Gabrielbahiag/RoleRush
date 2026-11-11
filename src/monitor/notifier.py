@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import httpx
 
@@ -60,19 +61,32 @@ class TelegramNotifier:
         vagas: list[Vaga],
         aderencias: dict[str, Aderencia] | None = None,
         ao_enviar: Callable[[Vaga], None] | None = None,
+        agrupar_acima: int | None = None,
+        por_mensagem: int = 8,
     ) -> None:
-        """Envia uma mensagem por vaga, chamando `ao_enviar` após cada entrega.
+        """Envia as vagas, chamando `ao_enviar` para cada uma assim que chega.
 
         É o `ao_enviar` que marca a vaga como vista: se o envio parar no meio,
         o que já chegou fica gravado e o resto volta na próxima execução — sem
         reenviar o que já foi e sem perder o que faltou.
+
+        Com mais de `agrupar_acima` vagas, junta até `por_mensagem` vagas por
+        mensagem: numa rajada, 60 notificações seguidas viram 8 mensagens.
         """
         aderencias = aderencias or {}
-        for indice, vaga in enumerate(vagas):
+        if agrupar_acima is not None and len(vagas) > agrupar_acima:
+            envios = _envios_agrupados(vagas, aderencias, por_mensagem)
+        else:
+            envios = [
+                _Envio(_formatar_vaga(vaga, aderencias.get(vaga.id)), _formatar_texto_puro(vaga), [vaga])
+                for vaga in vagas
+            ]
+
+        for indice, envio in enumerate(envios):
             if indice:
                 _dormir(_PAUSA_ENTRE_MENSAGENS)
             try:
-                self.notificar_vaga(vaga, aderencias.get(vaga.id))
+                self.enviar_mensagem(envio.html)
             except ErroTelegram as erro:
                 if erro.status != 400:
                     # credencial errada, chat inexistente ou falha transitória
@@ -81,9 +95,10 @@ class TelegramNotifier:
                 # 400 = o Telegram nunca vai aceitar ESTA mensagem. Reenviar
                 # sem formatação evita que ela trave a fila pra sempre.
                 logger.error("Mensagem rejeitada (%s); reenviando sem formatação", erro)
-                self.enviar_mensagem(_formatar_texto_puro(vaga), parse_mode=None)
+                self.enviar_mensagem(envio.texto_puro, parse_mode=None)
             if ao_enviar:
-                ao_enviar(vaga)
+                for vaga in envio.vagas:
+                    ao_enviar(vaga)
 
     def enviar_mensagem(self, texto: str, parse_mode: str | None = "HTML") -> None:
         if not self.configurado:
@@ -122,6 +137,43 @@ class TelegramNotifier:
                 if resposta.status_code != 429 and resposta.status_code < 500:
                     raise erro
         raise erro
+
+
+@dataclass(slots=True)
+class _Envio:
+    html: str
+    texto_puro: str
+    vagas: list[Vaga]
+
+
+def _envios_agrupados(
+    vagas: list[Vaga], aderencias: dict[str, Aderencia], por_mensagem: int
+) -> list[_Envio]:
+    # folga pro cabeçalho; o tamanho do HTML é sempre >= ao texto renderizado
+    # que o Telegram conta, então caber aqui garante caber lá.
+    limite = _MAX_CARACTERES - 200
+    grupos: list[list[tuple[Vaga, str]]] = []
+    atual: list[tuple[Vaga, str]] = []
+    tamanho = 0
+    for vaga in vagas:
+        bloco = _formatar_vaga(vaga, aderencias.get(vaga.id))
+        if atual and (len(atual) >= por_mensagem or tamanho + len(bloco) + 2 > limite):
+            grupos.append(atual)
+            atual, tamanho = [], 0
+        atual.append((vaga, bloco))
+        tamanho += len(bloco) + 2
+    if atual:
+        grupos.append(atual)
+
+    return [
+        _Envio(
+            html=f"📬 <b>{len(vagas)} vagas novas</b> ({numero}/{len(grupos)})\n\n"
+            + "\n\n".join(bloco for _, bloco in grupo),
+            texto_puro="\n\n".join(_formatar_texto_puro(vaga) for vaga, _ in grupo),
+            vagas=[vaga for vaga, _ in grupo],
+        )
+        for numero, grupo in enumerate(grupos, start=1)
+    ]
 
 
 def _espera(erro: ErroTelegram, tentativa: int) -> float:

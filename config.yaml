@@ -82,6 +82,9 @@ fontes:
 
 notificacao:
   telegram: true
+  max_por_execucao: 150 # o excedente fica para a próxima execução (não é perdido)
+  agrupar_acima: 10 # mais de 10 vagas de uma vez: várias por mensagem
+  vagas_por_mensagem: 8
 
 # quantos dias manter uma vaga no histórico de dedup (vagas_vistas) antes de
 # podar; null = manter pra sempre. Uma vaga podada volta a ser tratada como

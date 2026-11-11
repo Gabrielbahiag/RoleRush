@@ -273,3 +273,52 @@ def test_texto_acima_do_limite_do_telegram_e_cortado():
     _notifier().enviar_mensagem("x" * 5000)
 
     assert len(json.loads(rota.calls.last.request.content)["text"]) == 4096
+
+
+@respx.mock
+def test_acima_do_limite_agrupa_varias_vagas_por_mensagem():
+    rota = respx.post(URL_API).mock(return_value=OK)
+    vagas = [_vaga(id=f"a:{i}", titulo=f"Vaga {i}") for i in range(10)]
+    entregues = []
+
+    _notifier().notificar_vagas(vagas, ao_enviar=entregues.append, agrupar_acima=5, por_mensagem=4)
+
+    textos = [json.loads(chamada.request.content)["text"] for chamada in rota.calls]
+    assert len(textos) == 3  # 4 + 4 + 2
+    assert "10 vagas novas" in textos[0] and "(1/3)" in textos[0]
+    assert all(f"Vaga {i}" in textos[0] for i in range(4))
+    assert len(entregues) == 10
+
+
+@respx.mock
+def test_ate_o_limite_continua_uma_mensagem_por_vaga():
+    rota = respx.post(URL_API).mock(return_value=OK)
+
+    _notifier().notificar_vagas([_vaga(id="a:1"), _vaga(id="a:2")], agrupar_acima=5)
+
+    assert rota.call_count == 2
+
+
+@respx.mock
+def test_grupo_respeita_o_limite_de_caracteres():
+    rota = respx.post(URL_API).mock(return_value=OK)
+    vagas = [_vaga(id=f"a:{i}", titulo="x" * 1500) for i in range(6)]
+
+    _notifier().notificar_vagas(vagas, agrupar_acima=1, por_mensagem=8)
+
+    textos = [json.loads(chamada.request.content)["text"] for chamada in rota.calls]
+    assert all(len(texto) <= 4096 for texto in textos)
+    assert sum(texto.count("x" * 1500) for texto in textos) == 6
+
+
+@respx.mock
+def test_grupo_que_falha_no_meio_so_reporta_os_grupos_entregues():
+    respx.post(URL_API).mock(side_effect=[OK, Response(401, json={"ok": False, "description": "Unauthorized"})])
+    entregues = []
+
+    with pytest.raises(ErroTelegram):
+        _notifier().notificar_vagas(
+            [_vaga(id=f"a:{i}") for i in range(6)], ao_enviar=entregues.append, agrupar_acima=1, por_mensagem=3
+        )
+
+    assert [vaga.id for vaga in entregues] == ["a:0", "a:1", "a:2"]

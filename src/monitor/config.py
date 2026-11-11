@@ -101,6 +101,10 @@ class NotificacaoConfig(BaseModel):
     # filtro afrouxado) escoa ao longo de várias execuções em vez de bater no
     # limite do Telegram. O excedente não é marcado como visto: vem depois.
     max_por_execucao: int = Field(default=150, ge=1)
+    # com mais de N vagas numa execução, agrupa várias por mensagem em vez de
+    # uma mensagem por vaga. None = sempre uma por vaga.
+    agrupar_acima: int | None = None
+    vagas_por_mensagem: int = Field(default=8, ge=1, le=20)
 
 
 class CurriculoConfig(BaseModel):

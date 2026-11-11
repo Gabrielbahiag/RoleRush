@@ -226,7 +226,7 @@ def _executar(config: Config, fontes: list[Source], db_path: str | Path, enviar:
     notifier = TelegramNotifier() if enviar and config.notificacao.telegram else None
     if lote:
         if notifier is not None:
-            _notificar(notifier, lote, aderencias, entregue)
+            _notificar(notifier, lote, aderencias, entregue, config)
         else:
             # Telegram desligado no config (ou simulação): imprimir é a entrega.
             for vaga in lote:
@@ -313,7 +313,11 @@ def _separar_repetidas(notificaveis: list[Vaga], storage: Storage) -> tuple[list
 
 
 def _notificar(
-    notifier: TelegramNotifier, lote: list[Vaga], aderencias: dict[str, Aderencia], entregue
+    notifier: TelegramNotifier,
+    lote: list[Vaga],
+    aderencias: dict[str, Aderencia],
+    entregue,
+    config: Config,
 ) -> None:
     if not notifier.configurado:
         if _em_ci():
@@ -326,7 +330,13 @@ def _notificar(
             )
         logger.warning("Telegram sem credenciais: só imprimindo, sem marcar as vagas como vistas")
         return
-    notifier.notificar_vagas(lote, aderencias, ao_enviar=entregue)
+    notifier.notificar_vagas(
+        lote,
+        aderencias,
+        ao_enviar=entregue,
+        agrupar_acima=config.notificacao.agrupar_acima,
+        por_mensagem=config.notificacao.vagas_por_mensagem,
+    )
 
 
 def _em_ci() -> bool:
