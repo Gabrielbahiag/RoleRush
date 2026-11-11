@@ -16,12 +16,28 @@ class JobicySource(Source):
 
     nome = "jobicy"
 
-    def __init__(self, timeout: float = 15.0) -> None:
+    def __init__(
+        self,
+        geo: str | None = None,
+        tag: str | None = None,
+        quantidade: int = 100,
+        timeout: float = 15.0,
+    ) -> None:
+        self.geo = geo
+        self.tag = tag
+        self.quantidade = quantidade
         self.timeout = timeout
 
     def fetch(self) -> list[Vaga]:
+        # `geo` filtra na própria API por onde a pessoa pode morar ("brazil"
+        # devolve vagas abertas ao Brasil, à LATAM ou a qualquer lugar).
+        params: dict[str, Any] = {"count": self.quantidade}
+        if self.geo:
+            params["geo"] = self.geo
+        if self.tag:
+            params["tag"] = self.tag
         with httpx.Client(timeout=self.timeout) as client:
-            resposta = client.get(API_URL)
+            resposta = client.get(API_URL, params=params)
             resposta.raise_for_status()
             dados = resposta.json()
 

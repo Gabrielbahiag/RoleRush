@@ -36,6 +36,8 @@ class AdzunaConfig(BaseModel):
     pais: str = "br"
     what: str | None = None
     where: str | None = None
+    paginas: int = Field(default=3, ge=1, le=10)
+    max_dias: int | None = 3  # só vagas publicadas nos últimos N dias
 
 
 class RemoteOKConfig(BaseModel):
@@ -54,6 +56,8 @@ class HimalayasConfig(BaseModel):
 
 class JobicyConfig(BaseModel):
     ativo: bool = False
+    geo: str | None = None  # ex: "brazil", "latam"
+    tag: str | None = None  # ex: "python"
 
 
 class TheMuseConfig(BaseModel):

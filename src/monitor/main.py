@@ -57,6 +57,8 @@ def montar_fontes(config: Config) -> list[Source]:
                 pais=config.fontes.adzuna.pais,
                 what=config.fontes.adzuna.what,
                 where=config.fontes.adzuna.where,
+                paginas=config.fontes.adzuna.paginas,
+                max_dias=config.fontes.adzuna.max_dias,
             )
         )
 
@@ -75,7 +77,7 @@ def montar_fontes(config: Config) -> list[Source]:
         )
 
     if config.fontes.jobicy.ativo:
-        fontes.append(JobicySource())
+        fontes.append(JobicySource(geo=config.fontes.jobicy.geo, tag=config.fontes.jobicy.tag))
 
     if config.fontes.themuse.ativo:
         fontes.append(

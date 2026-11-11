@@ -439,3 +439,31 @@ def test_lista_vazia_continua_sendo_zero_vagas_e_nao_erro():
     respx.get("https://remotive.com/api/remote-jobs").mock(return_value=Response(200, json={"jobs": []}))
 
     assert RemotiveSource().fetch() == []
+
+
+@respx.mock
+def test_adzuna_pede_mais_novas_primeiro_e_pagina_ate_acabar():
+    def pagina(n, quantidade):
+        return Response(200, json={"results": [{"id": f"{n}-{i}", "title": "Dev"} for i in range(quantidade)]})
+
+    p1 = respx.get("https://api.adzuna.com/v1/api/jobs/br/search/1").mock(return_value=pagina(1, 2))
+    p2 = respx.get("https://api.adzuna.com/v1/api/jobs/br/search/2").mock(return_value=pagina(2, 1))
+    p3 = respx.get("https://api.adzuna.com/v1/api/jobs/br/search/3").mock(return_value=pagina(3, 2))
+
+    vagas = AdzunaSource(app_id="i", app_key="k", resultados_por_pagina=2, paginas=3, max_dias=3).fetch()
+
+    assert len(vagas) == 3
+    assert p1.called and p2.called and not p3.called  # página 2 veio incompleta: acabou
+    params = p1.calls.last.request.url.params
+    assert params["sort_by"] == "date"
+    assert params["max_days_old"] == "3"
+
+
+@respx.mock
+def test_jobicy_repassa_geo_e_tag_para_a_api():
+    rota = respx.get("https://jobicy.com/api/v2/remote-jobs").mock(return_value=Response(200, json={"jobs": []}))
+
+    JobicySource(geo="brazil", tag="python").fetch()
+
+    params = rota.calls.last.request.url.params
+    assert (params["geo"], params["tag"], params["count"]) == ("brazil", "python", "100")

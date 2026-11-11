@@ -52,6 +52,8 @@ fontes:
     pais: br
     where: Brasília # a API tem localização de verdade; complementa o filtro acima
     what: null # deixado em branco de propósito: o filtro de palavras-chave já filtra
+    paginas: 3 # até 150 vagas por execução, mais novas primeiro
+    max_dias: 3 # ignora vagas publicadas há mais de 3 dias
   remoteok:
     ativo: true
   arbeitnow:
@@ -62,6 +64,8 @@ fontes:
     q: null
   jobicy:
     ativo: true # agregador de vagas remotas, sem credencial
+    geo: brazil # só vagas abertas a quem mora no Brasil (inclui LATAM e "Anywhere")
+    tag: null
   themuse:
     ativo: true
     categoria: null
