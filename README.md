@@ -52,12 +52,21 @@ Pré-requisito: [uv](https://docs.astral.sh/uv/).
 uv sync                       # cria o venv e instala as dependências
 cp .env.example .env          # preencha TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID
 uv run python -m monitor.main # roda uma vez: coleta, filtra, dedup, notifica
+uv run python -m monitor.main --simular  # coleta e filtra de verdade, sem enviar nem gravar
 ```
 
-Sem token do Telegram configurado, o monitor roda normalmente e só imprime as
-vagas novas no terminal (a notificação é pulada com um aviso no log).
+`--simular` roda contra uma cópia descartável do `vagas.db`: é o jeito de
+testar filtro e fontes sem mexer no banco versionado nem no Telegram.
 
-Ajuste os filtros e as fontes ativas em [`config.yaml`](config.yaml).
+Sem token do Telegram configurado, o monitor roda normalmente, só imprime as
+vagas novas no terminal e **não as marca como vistas** — elas continuam
+pendentes até serem entregues de verdade. (No GitHub Actions, credencial
+ausente faz o job falhar, em vez de engolir as vagas.)
+
+Ajuste os filtros e as fontes ativas em [`config.yaml`](config.yaml). Os
+termos são comparados sem acento, sem maiúsculas e sem HTML; um termo
+terminado em `*` casa qualquer continuação (`desenvolvedor*`). Vaga remota
+com restrição de país só passa se a restrição bater com `remoto_aceito`.
 
 ## Adaptação de currículo
 
@@ -91,6 +100,19 @@ roda a cada 6 horas (`cron`) e também pode ser disparado manualmente pela aba
 *Actions*. Como o runner é efêmero, o `vagas.db` (SQLite com o histórico de
 dedup) é commitado de volta no repositório ao final de cada execução — é
 assim que o dedup sobrevive entre runs sem precisar de infra paga.
+
+- Uma vaga só é marcada como vista depois de entregue no Telegram, e o
+  `vagas.db` é commitado mesmo se a execução falhar no meio: nada se perde
+  e nada se repete.
+- Execuções nunca se sobrepõem (`concurrency`), e o push faz rebase se o
+  `main` andou durante a execução.
+- Uma fonte que quebra gera um aviso no Telegram; toda semana chega um
+  resumo com o funil de cada fonte (coletadas → aprovadas → notificadas).
+
+> **Privacidade:** num repositório público, o `config.yaml` (perfil, bairros)
+> e o `vagas.db` (vagas notificadas) ficam visíveis pra qualquer pessoa.
+> Pra uso pessoal, prefira um repositório **privado**: o consumo (4
+> execuções/dia de poucos minutos) cabe na cota gratuita de 2.000 min/mês.
 
 Segredos necessários (em *Settings → Secrets and variables → Actions*):
 
